@@ -54,14 +54,14 @@ def analyze_timeframe(symbol, interval):
 
         rsi = calculate_rsi(close).iloc[-1]
 
-        if ema20 > ema50 and rsi > 55:
-            signal = "BUY"
+        if ema20 > ema50 and rsi > 50:
+    signal = "BUY"
 
-        elif ema20 < ema50 and rsi < 45:
-            signal = "SELL"
+elif ema20 < ema50 and rsi < 50:
+    signal = "SELL"
 
-        else:
-            signal = "WAIT"
+else:
+    signal = "WAIT"
 
         return signal, round(float(rsi), 2)
 
@@ -93,24 +93,32 @@ buy_count = [h1_signal, h4_signal, d1_signal].count("BUY")
 sell_count = [h1_signal, h4_signal, d1_signal].count("SELL")
 
 if buy_count == 3:
-    final_signal = "🔥 STRONG BUY"
-    confidence = 95
+    signal = "STRONG BUY"
+    score = 95
 
 elif sell_count == 3:
-    final_signal = "🔥 STRONG SELL"
-    confidence = 95
+    signal = "STRONG SELL"
+    score = 95
 
-elif buy_count >= 2:
-    final_signal = "✅ BUY"
-    confidence = 75
+elif buy_count == 2:
+    signal = "BUY"
+    score = 75
 
-elif sell_count >= 2:
-    final_signal = "✅ SELL"
-    confidence = 75
+elif sell_count == 2:
+    signal = "SELL"
+    score = 75
+
+elif buy_count == 1:
+    signal = "WEAK BUY"
+    score = 60
+
+elif sell_count == 1:
+    signal = "WEAK SELL"
+    score = 60
 
 else:
-    final_signal = "⏳ WAIT"
-    confidence = 50
+    signal = "WAIT"
+    score = 50
 
 st.divider()
 
