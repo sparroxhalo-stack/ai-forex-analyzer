@@ -6,14 +6,15 @@ st.set_page_config(page_title="AI Forex Analyzer", layout="wide")
 
 st.title("📈 AI Forex Analyzer Pro")
 
-pairs = {
+pairs = pairs = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
     "USD/JPY": "USDJPY=X",
     "AUD/USD": "AUDUSD=X",
     "USD/CHF": "USDCHF=X",
     "USD/CAD": "USDCAD=X",
-    "EUR/GBP": "EURGBP=X"
+    "EUR/GBP": "EURGBP=X",
+    "Gold (XAU/USD)": "GC=F"
 }
 
 selected_pair = st.selectbox("Select Forex Pair", list(pairs.keys()))
@@ -154,3 +155,48 @@ st.divider()
 st.info(
     "Use the Daily trend for swing trading and the 1H + 4H trend alignment for day trading."
 )
+st.divider()
+st.header("Market Scanner")
+
+scanner_results = []
+
+for pair_name, pair_symbol in pairs.items():
+
+    h1_signal, h1_rsi = analyze_timeframe(pair_symbol, "1h")
+    h4_signal, h4_rsi = analyze_timeframe(pair_symbol, "4h")
+    d1_signal, d1_rsi = analyze_timeframe(pair_symbol, "1d")
+
+    buy_count = [h1_signal, h4_signal, d1_signal].count("BUY")
+    sell_count = [h1_signal, h4_signal, d1_signal].count("SELL")
+
+    if buy_count == 3:
+        signal = "STRONG BUY"
+        score = 95
+    elif sell_count == 3:
+        signal = "STRONG SELL"
+        score = 95
+    elif buy_count >= 2:
+        signal = "BUY"
+        score = 75
+    elif sell_count >= 2:
+        signal = "SELL"
+        score = 75
+    else:
+        signal = "WAIT"
+        score = 50
+
+    scanner_results.append(
+        {
+            "Pair": pair_name,
+            "Signal": signal,
+            "Score": score
+        }
+    )
+
+scanner_df = pd.DataFrame(scanner_results)
+scanner_df = scanner_df.sort_values(
+    by="Score",
+    ascending=False
+)
+
+st.dataframe(scanner_df, use_container_width=True)
