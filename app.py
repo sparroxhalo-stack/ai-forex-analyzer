@@ -2,11 +2,11 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.set_page_config(page_title="AI Forex Analyzer", layout="wide")
+st.set_page_config(page_title="AI Forex Analyzer Pro", layout="wide")
 
 st.title("📈 AI Forex Analyzer Pro")
 
-pairs = pairs = {
+pairs = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
     "USD/JPY": "USDJPY=X",
@@ -17,7 +17,11 @@ pairs = pairs = {
     "Gold (XAU/USD)": "GC=F"
 }
 
-selected_pair = st.selectbox("Select Forex Pair", list(pairs.keys()))
+selected_pair = st.selectbox(
+    "Select Pair",
+    list(pairs.keys())
+)
+
 symbol = pairs[selected_pair]
 
 
@@ -28,6 +32,7 @@ def calculate_rsi(series, period=14):
     loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
 
     rs = gain / loss
+
     rsi = 100 - (100 / (1 + rs))
 
     return rsi
@@ -54,23 +59,28 @@ def analyze_timeframe(symbol, interval):
 
         rsi = calculate_rsi(close).iloc[-1]
 
-if ema20 > ema50 and rsi > 50:
-    signal = "BUY"
+        if ema20 > ema50 and rsi > 50:
+            signal = "BUY"
 
-elif ema20 < ema50 and rsi < 50:
-    signal = "SELL"
+        elif ema20 < ema50 and rsi < 50:
+            signal = "SELL"
 
-else:
-    signal = "WAIT"
+        else:
+            signal = "WAIT"
+
+        return signal, round(float(rsi), 2)
+
+    except:
+        return "WAIT", 50
 
 
 st.subheader("Multi-Timeframe Analysis")
 
-col1, col2, col3 = st.columns(3)
-
 h1_signal, h1_rsi = analyze_timeframe(symbol, "1h")
 h4_signal, h4_rsi = analyze_timeframe(symbol, "4h")
 d1_signal, d1_rsi = analyze_timeframe(symbol, "1d")
+
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("1 Hour", h1_signal)
@@ -88,32 +98,32 @@ buy_count = [h1_signal, h4_signal, d1_signal].count("BUY")
 sell_count = [h1_signal, h4_signal, d1_signal].count("SELL")
 
 if buy_count == 3:
-    signal = "STRONG BUY"
-    score = 95
+    final_signal = "STRONG BUY"
+    confidence = 95
 
 elif sell_count == 3:
-    signal = "STRONG SELL"
-    score = 95
+    final_signal = "STRONG SELL"
+    confidence = 95
 
 elif buy_count == 2:
-    signal = "BUY"
-    score = 75
+    final_signal = "BUY"
+    confidence = 75
 
 elif sell_count == 2:
-    signal = "SELL"
-    score = 75
+    final_signal = "SELL"
+    confidence = 75
 
 elif buy_count == 1:
-    signal = "WEAK BUY"
-    score = 60
+    final_signal = "WEAK BUY"
+    confidence = 60
 
 elif sell_count == 1:
-    signal = "WEAK SELL"
-    score = 60
+    final_signal = "WEAK SELL"
+    confidence = 60
 
 else:
-    signal = "WAIT"
-    score = 50
+    final_signal = "WAIT"
+    confidence = 50
 
 st.divider()
 
@@ -155,33 +165,29 @@ st.write(f"Suggested Lot Size: {lot_size}")
 
 st.divider()
 
-st.info(
-    "Use the Daily trend for swing trading and the 1H + 4H trend alignment for day trading."
-)
-st.divider()
 st.header("Market Scanner")
 
 scanner_results = []
 
 for pair_name, pair_symbol in pairs.items():
 
-    h1_signal, h1_rsi = analyze_timeframe(pair_symbol, "1h")
-    h4_signal, h4_rsi = analyze_timeframe(pair_symbol, "4h")
-    d1_signal, d1_rsi = analyze_timeframe(pair_symbol, "1d")
+    h1, _ = analyze_timeframe(pair_symbol, "1h")
+    h4, _ = analyze_timeframe(pair_symbol, "4h")
+    d1, _ = analyze_timeframe(pair_symbol, "1d")
 
-    buy_count = [h1_signal, h4_signal, d1_signal].count("BUY")
-    sell_count = [h1_signal, h4_signal, d1_signal].count("SELL")
+    buys = [h1, h4, d1].count("BUY")
+    sells = [h1, h4, d1].count("SELL")
 
-    if buy_count == 3:
+    if buys == 3:
         signal = "STRONG BUY"
         score = 95
-    elif sell_count == 3:
+    elif sells == 3:
         signal = "STRONG SELL"
         score = 95
-    elif buy_count >= 2:
+    elif buys >= 2:
         signal = "BUY"
         score = 75
-    elif sell_count >= 2:
+    elif sells >= 2:
         signal = "SELL"
         score = 75
     else:
@@ -197,9 +203,14 @@ for pair_name, pair_symbol in pairs.items():
     )
 
 scanner_df = pd.DataFrame(scanner_results)
+
 scanner_df = scanner_df.sort_values(
     by="Score",
     ascending=False
 )
 
 st.dataframe(scanner_df, use_container_width=True)
+
+st.info(
+    "Use Daily + 4H for swing trading and 1H + 4H for day trading."
+)
