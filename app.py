@@ -54,7 +54,7 @@ def analyze_timeframe(symbol, interval):
 
         rsi = calculate_rsi(close).iloc[-1]
 
-        if ema20 > ema50 and rsi > 50:
+if ema20 > ema50 and rsi > 50:
     signal = "BUY"
 
 elif ema20 < ema50 and rsi < 50:
@@ -62,11 +62,6 @@ elif ema20 < ema50 and rsi < 50:
 
 else:
     signal = "WAIT"
-
-        return signal, round(float(rsi), 2)
-
-    except:
-        return "WAIT", 50
 
 
 st.subheader("Multi-Timeframe Analysis")
