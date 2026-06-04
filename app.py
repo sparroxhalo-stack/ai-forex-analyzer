@@ -2,188 +2,67 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.set_page_config(page_title="AI Forex Analyzer Pro", layout="wide")
+st.set_page_config(page_title="AI Forex Analyzer", layout="wide")
 
-st.title("📈 AI Forex Analyzer Pro")
+st.title("📈 AI Forex Analyzer")
 
-pairs = {
+PAIRS = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
     "USD/JPY": "USDJPY=X",
     "AUD/USD": "AUDUSD=X",
     "USD/CHF": "USDCHF=X",
     "USD/CAD": "USDCAD=X",
-    "EUR/GBP": "EURGBP=X",
     "Gold (XAU/USD)": "GC=F"
 }
 
-selected_pair = st.selectbox(
-    "Select Pair",
-    list(pairs.keys())
-)
-
-symbol = pairs[selected_pair]
+pair = st.selectbox("Select Pair", list(PAIRS.keys()))
+symbol = PAIRS[pair]
 
 
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-
-    gain = delta.where(delta > 0, 0).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-
-    rs = gain / loss
-
-    return 100 - (100 / (1 + rs))
-
-
-def analyze_timeframe(symbol, interval):
+def get_signal(symbol):
     try:
-
         data = yf.download(
             symbol,
-            period="90d",
-            interval=interval,
+            period="3mo",
+            interval="1d",
             progress=False,
             auto_adjust=True
         )
 
-        if len(data) < 60:
-            return "WAIT", 50
+        if data.empty:
+            return "NO DATA"
 
         close = data["Close"]
 
         ema20 = close.ewm(span=20).mean().iloc[-1]
         ema50 = close.ewm(span=50).mean().iloc[-1]
 
-        rsi = calculate_rsi(close).iloc[-1]
-
         if ema20 > ema50:
-            signal = "BUY"
+            return "BUY"
         else:
-            signal = "SELL"
-
-        return signal, round(float(rsi), 2)
+            return "SELL"
 
     except Exception:
-        return "WAIT", 50
+        return "ERROR"
 
 
-st.subheader("Multi-Timeframe Analysis")
+signal = get_signal(symbol)
 
-h1_signal, h1_rsi = analyze_timeframe(symbol, "1h")
-h4_signal, h4_rsi = analyze_timeframe(symbol, "4h")
-d1_signal, d1_rsi = analyze_timeframe(symbol, "1d")
+st.subheader("Current Signal")
 
-col1, col2, col3 = st.columns(3)
+if signal == "BUY":
+    st.success("BUY")
 
-with col1:
-    st.metric("1 Hour", h1_signal)
-    st.write(f"RSI: {h1_rsi}")
-
-with col2:
-    st.metric("4 Hour", h4_signal)
-    st.write(f"RSI: {h4_rsi}")
-
-with col3:
-    st.metric("Daily", d1_signal)
-    st.write(f"RSI: {d1_rsi}")
-
-buy_count = [h1_signal, h4_signal, d1_signal].count("BUY")
-sell_count = [h1_signal, h4_signal, d1_signal].count("SELL")
-
-if buy_count == 3:
-    final_signal = "STRONG BUY"
-    confidence = 95
-
-elif sell_count == 3:
-    final_signal = "STRONG SELL"
-    confidence = 95
-
-elif buy_count == 2:
-    final_signal = "BUY"
-    confidence = 75
-
-elif sell_count == 2:
-    final_signal = "SELL"
-    confidence = 75
-
-elif buy_count == 1:
-    final_signal = "WEAK BUY"
-    confidence = 60
-
-elif sell_count == 1:
-    final_signal = "WEAK SELL"
-    confidence = 60
+elif signal == "SELL":
+    st.error("SELL")
 
 else:
-    final_signal = "WAIT"
-    confidence = 50
+    st.warning(signal)
 
 st.divider()
 
-st.header(final_signal)
-st.progress(confidence / 100)
-st.write(f"Confidence: {confidence}%")
-
-st.divider()
-
-st.subheader("Support & Resistance")
-
-try:
-    data_sr = yf.download(
-        symbol,
-        period="30d",
-        interval="1h",
-        progress=False,
-        auto_adjust=True
-    )
-
-    resistance = float(data_sr["High"].tail(50).max())
-    support = float(data_sr["Low"].tail(50).min())
-
-    st.write(f"Support: {support:.5f}")
-    st.write(f"Resistance: {resistance:.5f}")
-
-except:
-    st.write("Support/Resistance unavailable")
-
-st.divider()
-
-st.subheader("Trade Setup")
-
-try:
-    current_price = float(data_sr["Close"].iloc[-1])
-
-    if "BUY" in final_signal:
-
-        entry = current_price
-        stop_loss = support
-        risk = entry - stop_loss
-        take_profit = entry + (risk * 2)
-
-        st.success("BUY Setup")
-        st.write(f"Entry: {entry:.5f}")
-        st.write(f"Stop Loss: {stop_loss:.5f}")
-        st.write(f"Take Profit: {take_profit:.5f}")
-
-    elif "SELL" in final_signal:
-
-        entry = current_price
-        stop_loss = resistance
-        risk = stop_loss - entry
-        take_profit = entry - (risk * 2)
-
-        st.error("SELL Setup")
-        st.write(f"Entry: {entry:.5f}")
-        st.write(f"Stop Loss: {stop_loss:.5f}")
-        st.write(f"Take Profit: {take_profit:.5f}")
-
-except:
-    pass
-
-st.divider()
-
-st.subheader("Risk Management")
+st.subheader("Risk Calculator")
 
 balance = st.number_input(
     "Account Balance ($)",
@@ -195,69 +74,35 @@ risk_percent = st.slider(
     "Risk Per Trade (%)",
     1,
     10,
-    5
+    2
 )
 
 risk_amount = balance * risk_percent / 100
 
 st.write(f"Risk Amount: ${risk_amount:.2f}")
 
-if risk_amount <= 5:
-    lot_size = 0.01
-elif risk_amount <= 20:
-    lot_size = 0.02
-elif risk_amount <= 50:
-    lot_size = 0.05
-else:
-    lot_size = 0.10
-
-st.write(f"Suggested Lot Size: {lot_size}")
-
 st.divider()
 
-st.header("Market Scanner")
+st.subheader("Market Scanner")
 
-scanner_results = []
+results = []
 
-for pair_name, pair_symbol in pairs.items():
+for name, sym in PAIRS.items():
 
-    h1, _ = analyze_timeframe(pair_symbol, "1h")
-    h4, _ = analyze_timeframe(pair_symbol, "4h")
-    d1, _ = analyze_timeframe(pair_symbol, "1d")
+    sig = get_signal(sym)
 
-    buys = [h1, h4, d1].count("BUY")
-    sells = [h1, h4, d1].count("SELL")
-
-    if buys == 3:
-        signal = "STRONG BUY"
-        score = 95
-    elif sells == 3:
-        signal = "STRONG SELL"
-        score = 95
-    elif buys >= 2:
-        signal = "BUY"
-        score = 75
-    elif sells >= 2:
-        signal = "SELL"
-        score = 75
-    else:
-        signal = "WAIT"
-        score = 50
-
-    scanner_results.append({
-        "Pair": pair_name,
-        "Signal": signal,
-        "Score": score
+    results.append({
+        "Pair": name,
+        "Signal": sig
     })
 
-scanner_df = pd.DataFrame(scanner_results)
-scanner_df = scanner_df.sort_values(
-    by="Score",
-    ascending=False
+scanner = pd.DataFrame(results)
+
+st.dataframe(
+    scanner,
+    use_container_width=True
 )
 
-st.dataframe(scanner_df, use_container_width=True)
-
 st.info(
-    "Use Daily + 4H for swing trading and 1H + 4H for day trading."
+    "This version uses a simple EMA20 vs EMA50 trend system."
 )
