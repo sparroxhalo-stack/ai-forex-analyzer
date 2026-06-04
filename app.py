@@ -33,14 +33,12 @@ def calculate_rsi(series, period=14):
 
     rs = gain / loss
 
-    rsi = 100 - (100 / (1 + rs))
-
-    return rsi
+    return 100 - (100 / (1 + rs))
 
 
 def analyze_timeframe(symbol, interval):
-
     try:
+
         data = yf.download(
             symbol,
             period="90d",
@@ -60,13 +58,13 @@ def analyze_timeframe(symbol, interval):
         rsi = calculate_rsi(close).iloc[-1]
 
         if ema20 > ema50:
-    signal = "BUY"
-else:
-    signal = "SELL"
+            signal = "BUY"
+        else:
+            signal = "SELL"
 
         return signal, round(float(rsi), 2)
 
-    except:
+    except Exception:
         return "WAIT", 50
 
 
@@ -126,6 +124,62 @@ st.divider()
 st.header(final_signal)
 st.progress(confidence / 100)
 st.write(f"Confidence: {confidence}%")
+
+st.divider()
+
+st.subheader("Support & Resistance")
+
+try:
+    data_sr = yf.download(
+        symbol,
+        period="30d",
+        interval="1h",
+        progress=False,
+        auto_adjust=True
+    )
+
+    resistance = float(data_sr["High"].tail(50).max())
+    support = float(data_sr["Low"].tail(50).min())
+
+    st.write(f"Support: {support:.5f}")
+    st.write(f"Resistance: {resistance:.5f}")
+
+except:
+    st.write("Support/Resistance unavailable")
+
+st.divider()
+
+st.subheader("Trade Setup")
+
+try:
+    current_price = float(data_sr["Close"].iloc[-1])
+
+    if "BUY" in final_signal:
+
+        entry = current_price
+        stop_loss = support
+        risk = entry - stop_loss
+        take_profit = entry + (risk * 2)
+
+        st.success("BUY Setup")
+        st.write(f"Entry: {entry:.5f}")
+        st.write(f"Stop Loss: {stop_loss:.5f}")
+        st.write(f"Take Profit: {take_profit:.5f}")
+
+    elif "SELL" in final_signal:
+
+        entry = current_price
+        stop_loss = resistance
+        risk = stop_loss - entry
+        take_profit = entry - (risk * 2)
+
+        st.error("SELL Setup")
+        st.write(f"Entry: {entry:.5f}")
+        st.write(f"Stop Loss: {stop_loss:.5f}")
+        st.write(f"Take Profit: {take_profit:.5f}")
+
+except:
+    pass
 
 st.divider()
 
@@ -190,16 +244,13 @@ for pair_name, pair_symbol in pairs.items():
         signal = "WAIT"
         score = 50
 
-    scanner_results.append(
-        {
-            "Pair": pair_name,
-            "Signal": signal,
-            "Score": score
-        }
-    )
+    scanner_results.append({
+        "Pair": pair_name,
+        "Signal": signal,
+        "Score": score
+    })
 
 scanner_df = pd.DataFrame(scanner_results)
-
 scanner_df = scanner_df.sort_values(
     by="Score",
     ascending=False
