@@ -43,8 +43,9 @@ def get_signal(symbol):
         else:
             return "SELL"
 
-    except Exception:
-        return "ERROR"
+    except Exception as e:
+    st.error(str(e))
+    return "ERROR"
 
 
 signal = get_signal(symbol)
