@@ -1,5 +1,17 @@
 import streamlit as st
+import yfinance as yf
 
-st.title("TEST APP")
+st.title("Yahoo Finance Test")
 
-st.success("If you can see this, deployment is working.")
+try:
+    data = yf.download(
+        "EURUSD=X",
+        period="1mo",
+        progress=False
+    )
+
+    st.write("Data downloaded successfully")
+    st.write(data.tail())
+
+except Exception as e:
+    st.error(str(e))
