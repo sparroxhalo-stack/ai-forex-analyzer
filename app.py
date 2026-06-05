@@ -6,7 +6,7 @@ st.set_page_config(page_title="AI Forex Analyzer", layout="wide")
 
 st.title("📈 AI Forex Analyzer")
 
-PAIRS = {
+pairs = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
     "USD/JPY": "USDJPY=X",
@@ -16,21 +16,28 @@ PAIRS = {
     "Gold (XAU/USD)": "GC=F"
 }
 
-pair = st.selectbox("Select Pair", list(PAIRS.keys()))
-symbol = PAIRS[pair]
+selected_pair = st.selectbox(
+    "Select Pair",
+    list(pairs.keys())
+)
+
+symbol = pairs[selected_pair]
 
 
 def get_signal(symbol):
     try:
         data = yf.download(
             symbol,
-            period="3mo",
+            period="6mo",
             interval="1d",
             progress=False,
             auto_adjust=True
         )
 
         if data.empty:
+            return "NO DATA"
+
+        if "Close" not in data.columns:
             return "NO DATA"
 
         close = data["Close"]
@@ -44,22 +51,13 @@ def get_signal(symbol):
             return "SELL"
 
     except Exception as e:
-    st.error(str(e))
-    return "ERROR"
+        return f"ERROR"
 
 
 signal = get_signal(symbol)
 
 st.subheader("Current Signal")
-
-if signal == "BUY":
-    st.success("BUY")
-
-elif signal == "SELL":
-    st.error("SELL")
-
-else:
-    st.warning(signal)
+st.write(signal)
 
 st.divider()
 
@@ -73,9 +71,9 @@ balance = st.number_input(
 
 risk_percent = st.slider(
     "Risk Per Trade (%)",
-    1,
-    10,
-    2
+    min_value=1,
+    max_value=10,
+    value=2
 )
 
 risk_amount = balance * risk_percent / 100
@@ -88,22 +86,21 @@ st.subheader("Market Scanner")
 
 results = []
 
-for name, sym in PAIRS.items():
-
-    sig = get_signal(sym)
+for pair_name, pair_symbol in pairs.items():
+    sig = get_signal(pair_symbol)
 
     results.append({
-        "Pair": name,
+        "Pair": pair_name,
         "Signal": sig
     })
 
-scanner = pd.DataFrame(results)
+scanner_df = pd.DataFrame(results)
 
 st.dataframe(
-    scanner,
+    scanner_df,
     use_container_width=True
 )
 
 st.info(
-    "This version uses a simple EMA20 vs EMA50 trend system."
+    "Simple EMA20 vs EMA50 trend scanner."
 )
