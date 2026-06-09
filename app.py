@@ -196,6 +196,59 @@ else:
 
 st.write(f"Suggested Lot Size: {lot_size}")
 
+st.divider()
+
+st.subheader("Trade Setup")
+
+try:
+    data = yf.download(
+        symbol,
+        period="3mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=True
+    )
+
+    close = data.iloc[:, 0]
+    current_price = float(close.iloc[-1])
+
+    high = data.iloc[:, 1]
+    low = data.iloc[:, 2]
+
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr = tr.rolling(14).mean().iloc[-1]
+
+    risk = atr * 1.5
+
+    if "BUY" in final_signal:
+
+        sl = current_price - risk
+
+        tp1 = current_price + risk
+        tp2 = current_price + (risk * 2)
+        tp3 = current_price + (risk * 3)
+
+    else:
+
+        sl = current_price + risk
+
+        tp1 = current_price - risk
+        tp2 = current_price - (risk * 2)
+        tp3 = current_price - (risk * 3)
+
+    st.write(f"Current Price: {current_price:.5f}")
+    st.write(f"Stop Loss: {sl:.5f}")
+    st.write(f"TP1: {tp1:.5f}")
+    st.write(f"TP2: {tp2:.5f}")
+    st.write(f"TP3: {tp3:.5f}")
+
+except:
+    st.warning("Trade setup unavailable")
 st.info(
     "Use Daily for day trading. Use Swing + Trend alignment for swing trades."
 )
