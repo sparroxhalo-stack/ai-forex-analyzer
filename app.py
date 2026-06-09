@@ -175,6 +175,7 @@ for pair_name, pair_symbol in pairs.items():
         }
     )
 
+
 scanner = pd.DataFrame(results)
 
 scanner = scanner.sort_values(
@@ -182,11 +183,30 @@ scanner = scanner.sort_values(
     ascending=False
 )
 
+top_buys = scanner[
+    scanner["Signal"].str.contains("BUY", na=False)
+].head(3)
+
+top_sells = scanner[
+    scanner["Signal"].str.contains("SELL", na=False)
+].head(3)
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("🚀 Top Buys")
+    st.dataframe(top_buys, use_container_width=True)
+
+with col2:
+    st.subheader("📉 Top Sells")
+    st.dataframe(top_sells, use_container_width=True)
+
+st.subheader("📊 Full Market Scanner")
+
 st.dataframe(
     scanner,
     use_container_width=True
 )
-
 st.divider()
 
 st.subheader("💰 Risk Management")
