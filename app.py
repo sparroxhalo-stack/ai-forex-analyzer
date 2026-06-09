@@ -2,9 +2,25 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.set_page_config(page_title="AI Forex Analyzer Pro", layout="wide")
+st.set_page_config(
+    page_title="Sparro FX AI",
+    layout="wide"
+)
 
-st.title("📈 AI Forex Analyzer Pro")
+st.title("🚀 Sparro FX AI")
+
+st.caption(
+    "AI-Powered Forex, Gold, Crypto & Index Analysis"
+)
+st.divider()
+
+st.subheader("📊 Market Overview")
+
+st.info(
+    "Professional AI market scanner for Forex, Gold, Crypto and Indices."
+)
+
+st.divider()
 
 pairs = {
     "EUR/USD": "EURUSD=X",
@@ -97,7 +113,14 @@ with col3:
 
 st.divider()
 
-st.header(final_signal)
+if "BUY" in final_signal:
+    st.success(f"🚀 {final_signal}")
+
+elif "SELL" in final_signal:
+    st.error(f"📉 {final_signal}")
+
+else:
+    st.warning("⏳ WAIT")
 
 st.progress(confidence / 100)
 
@@ -111,7 +134,7 @@ elif "SELL" in final_signal:
 
 st.divider()
 
-st.subheader("Market Scanner")
+st.subheader("🔥 Top Market Opportunities")
 
 results = []
 
@@ -166,7 +189,7 @@ st.dataframe(
 
 st.divider()
 
-st.subheader("Risk Calculator")
+st.subheader("💰 Risk Management")
 
 balance = st.number_input(
     "Account Balance ($)",
