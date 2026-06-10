@@ -150,9 +150,9 @@ st.subheader("🔥 Top Market Opportunities")
 results = []
 for pair_name, pair_symbol in pairs.items():
 
-d = get_signal(pair_symbol, "6mo")
-s = get_signal(pair_symbol, "1y")
-t = get_signal(pair_symbol, "2y")
+    d = get_signal(pair_symbol, "6mo")
+    s = get_signal(pair_symbol, "1y")
+    t = get_signal(pair_symbol, "2y")
 
 buys = sum(
     1 for x in [d, s, t]
@@ -184,12 +184,13 @@ else:
     signal = "WAIT"
     score = 50
 
-        {
-            "Asset": pair_name,
-            "Signal": signal,
-            "Score": score
-        }
-    )
+results.append(
+{
+"Asset": pair_name,
+"Signal": signal,
+"Score": score
+}
+)
 
 
 scanner = pd.DataFrame(results)
