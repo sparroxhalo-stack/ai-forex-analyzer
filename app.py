@@ -54,48 +54,49 @@ def get_signal(symbol, period="6mo"):
         )
 
         if data.empty:
-            return "NO DATA"
+            return "WAIT"
 
         close = data.iloc[:, 0]
 
         ema20 = close.ewm(span=20).mean().iloc[-1]
         ema50 = close.ewm(span=50).mean().iloc[-1]
+        ema200 = close.ewm(span=200).mean().iloc[-1]
 
-        if ema20 > ema50:
+        delta = close.diff()
+
+        gain = delta.where(delta > 0, 0).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+
+        rs = gain / loss
+
+        rsi = (100 - (100 / (1 + rs))).iloc[-1]
+
+        if (
+            ema20 > ema50 and
+            ema50 > ema200 and
+            rsi > 55
+        ):
+            return "STRONG BUY"
+
+        elif (
+            ema20 < ema50 and
+            ema50 < ema200 and
+            rsi < 45
+        ):
+            return "STRONG SELL"
+
+        elif ema20 > ema50:
             return "BUY"
-        else:
+
+        elif ema20 < ema50:
             return "SELL"
+
+        else:
+            return "WAIT"
 
     except:
         return "ERROR"
-
-
-daily_signal = get_signal(symbol, "6mo")
-swing_signal = get_signal(symbol, "1y")
-trend_signal = get_signal(symbol, "2y")
-
-buy_count = [daily_signal, swing_signal, trend_signal].count("BUY")
-sell_count = [daily_signal, swing_signal, trend_signal].count("SELL")
-
-if buy_count == 3:
-    final_signal = "STRONG BUY"
-    confidence = 95
-
-elif sell_count == 3:
-    final_signal = "STRONG SELL"
-    confidence = 95
-
-elif buy_count >= 2:
-    final_signal = "BUY"
-    confidence = 75
-
-elif sell_count >= 2:
-    final_signal = "SELL"
-    confidence = 75
-
-else:
-    final_signal = "WAIT"
-    confidence = 50
+   
 
 
 st.subheader("Current Analysis")
@@ -154,9 +155,16 @@ for pair_name, pair_symbol in pairs.items():
     s = get_signal(pair_symbol, "1y")
     t = get_signal(pair_symbol, "2y")
 
-    buys = [d, s, t].count("BUY")
-    sells = [d, s, t].count("SELL")
+    
+buy_count = sum(
+    1 for x in [daily_signal, swing_signal, trend_signal]
+    if "BUY" in x
+)
 
+sell_count = sum(
+    1 for x in [daily_signal, swing_signal, trend_signal]
+    if "SELL" in x
+)
     if buys == 3:
         signal = "STRONG BUY"
         score = 95
