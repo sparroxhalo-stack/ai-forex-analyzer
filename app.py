@@ -185,6 +185,43 @@ with col3:
 
 st.write(f"Confidence: {confidence}%")
 
+try:
+    data = yf.download(
+        symbol,
+        period="1mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=True
+    )
+
+    current_price = float(data.iloc[-1]["Close"])
+
+    if "BUY" in final_signal:
+
+        entry = current_price
+        sl = current_price * 0.99
+        tp1 = current_price * 1.02
+        tp2 = current_price * 1.04
+
+    elif "SELL" in final_signal:
+
+        entry = current_price
+        sl = current_price * 1.01
+        tp1 = current_price * 0.98
+        tp2 = current_price * 0.96
+
+    st.subheader("🎯 Trade Setup")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Entry", round(entry, 4))
+    col2.metric("Stop Loss", round(sl, 4))
+    col3.metric("TP1", round(tp1, 4))
+    col4.metric("TP2", round(tp2, 4))
+
+except:
+    pass
+    
 if "BUY" in final_signal:
     st.success("Bullish Market Structure")
 
