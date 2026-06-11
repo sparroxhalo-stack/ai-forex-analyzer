@@ -95,9 +95,11 @@ def get_signal(symbol, period="6mo"):
             return "WAIT"
 
     except:
-        return "ERROR"
-   
+    return "ERROR"
 
+daily_signal = get_signal(symbol, "6mo")
+swing_signal = get_signal(symbol, "1y")
+trend_signal = get_signal(symbol, "2y")
 
 st.subheader("Current Analysis")
 
