@@ -313,6 +313,28 @@ st.dataframe(
 )
 st.divider()
 
+best_trade = scanner.iloc[0]
+
+st.subheader("🏆 Trade of the Day")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Asset", best_trade["Asset"])
+
+with col2:
+    st.metric("Signal", best_trade["Signal"])
+
+with col3:
+    st.metric("Score", f"{best_trade['Score']}%")
+
+if "BUY" in str(best_trade["Signal"]):
+    st.success(f"Best Opportunity: {best_trade['Asset']}")
+
+elif "SELL" in str(best_trade["Signal"]):
+    st.error(f"Best Opportunity: {best_trade['Asset']}")
+st.divider()
+
 st.subheader("💰 Risk Management")
 
 balance = st.number_input(
