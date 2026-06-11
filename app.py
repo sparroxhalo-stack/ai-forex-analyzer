@@ -101,6 +101,7 @@ daily_signal = get_signal(symbol, "6mo")
 swing_signal = get_signal(symbol, "1y")
 trend_signal = get_signal(symbol, "2y")
 buy_count = sum(
+    
     1 for x in [daily_signal, swing_signal, trend_signal]
     if "BUY" in x
 )
