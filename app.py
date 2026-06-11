@@ -100,7 +100,35 @@ def get_signal(symbol, period="6mo"):
 daily_signal = get_signal(symbol, "6mo")
 swing_signal = get_signal(symbol, "1y")
 trend_signal = get_signal(symbol, "2y")
+buy_count = sum(
+    1 for x in [daily_signal, swing_signal, trend_signal]
+    if "BUY" in x
+)
 
+sell_count = sum(
+    1 for x in [daily_signal, swing_signal, trend_signal]
+    if "SELL" in x
+)
+
+if buy_count == 3:
+    final_signal = "STRONG BUY"
+    confidence = 95
+
+elif sell_count == 3:
+    final_signal = "STRONG SELL"
+    confidence = 95
+
+elif buy_count >= 2:
+    final_signal = "BUY"
+    confidence = 75
+
+elif sell_count >= 2:
+    final_signal = "SELL"
+    confidence = 75
+
+else:
+    final_signal = "WAIT"
+    confidence = 50
 st.subheader("Current Analysis")
 
 col1, col2, col3 = st.columns(3)
