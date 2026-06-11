@@ -111,25 +111,42 @@ sell_count = sum(
     if "SELL" in x
 )
 
+confidence = 50
+
+if daily_signal == swing_signal:
+    confidence += 10
+
+if swing_signal == trend_signal:
+    confidence += 10
+
+if daily_signal == trend_signal:
+    confidence += 10
+
+if "STRONG" in daily_signal:
+    confidence += 5
+
+if "STRONG" in swing_signal:
+    confidence += 5
+
+if "STRONG" in trend_signal:
+    confidence += 5
+
+confidence = min(confidence, 99)
+
 if buy_count == 3:
     final_signal = "STRONG BUY"
-    confidence = 95
 
 elif sell_count == 3:
     final_signal = "STRONG SELL"
-    confidence = 95
 
 elif buy_count >= 2:
     final_signal = "BUY"
-    confidence = 75
 
 elif sell_count >= 2:
     final_signal = "SELL"
-    confidence = 75
 
 else:
     final_signal = "WAIT"
-    confidence = 50
 st.subheader("Current Analysis")
 
 col1, col2, col3 = st.columns(3)
