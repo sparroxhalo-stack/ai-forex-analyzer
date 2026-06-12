@@ -111,6 +111,11 @@ sell_count = sum(
     if "SELL" in x
 )
 
+sell_count = sum(
+    1 for x in [daily_signal, swing_signal, trend_signal]
+    if "SELL" in x
+)
+
 confidence = 50
 
 if daily_signal == swing_signal:
@@ -144,6 +149,57 @@ elif buy_count >= 2:
 
 elif sell_count >= 2:
     final_signal = "SELL"
+
+else:
+    final_signal = "WAIT"
+st.subheader("Current Analysis")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Daily", daily_signal)
+
+with col2:
+    st.metric("Swing", swing_signal)
+
+with col3:
+    st.metric("Trend", trend_signal)
+
+st.divider()
+
+if "BUY" in final_signal:
+    st.success(f"🚀 {final_signal}")
+
+elif "SELL" in final_signal:
+    st.error(f"📉 {final_signal}")
+
+else:
+    st.warning("⏳ WAIT")
+
+st.progress(confidence / 100)
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Signal", final_signal)
+
+with col2:
+    st.metric("Confidence", f"{confidence}%")
+
+with col3:
+    st.metric("Asset", selected_pair)
+
+st.write(f"Confidence: {confidence}%")
+
+try:
+    data = yf.download(
+        symbol,
+        period="1mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=True
+    )
+
+    current_price = float(data.iloc
 
 else:
     final_signal = "WAIT"
