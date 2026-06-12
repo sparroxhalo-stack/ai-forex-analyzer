@@ -198,6 +198,7 @@ try:
         progress=False,
         auto_adjust=True
     )
+    
 try:
     data = yf.download(
         symbol,
