@@ -199,7 +199,7 @@ try:
         auto_adjust=True
     )
 
-    current_price = float(data.iloc
+   current_price = float(data.iloc[-1]["Close"]) 
 
 else:
     final_signal = "WAIT"
