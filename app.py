@@ -198,11 +198,20 @@ try:
         progress=False,
         auto_adjust=True
     )
+try:
+    data = yf.download(
+        symbol,
+        period="1mo",
+        interval="1d",
+        progress=False,
+        auto_adjust=True
+    )
 
-   current_price = float(data.iloc[-1]["Close"]) 
+    current_price = float(data.iloc[-1]["Close"])
 
-else:
-    final_signal = "WAIT"
+except:
+    current_price = 0
+   
 st.subheader("Current Analysis")
 
 col1, col2, col3 = st.columns(3)
