@@ -199,7 +199,6 @@ try:
         auto_adjust=True
     )
     
-try:
     data = yf.download(
         symbol,
         period="1mo",
