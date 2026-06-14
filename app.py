@@ -625,16 +625,34 @@ with st.sidebar:
         st.caption(f"👤 {st.session_state.user_email}")
     st.divider()
 
-    page=st.radio("",["🏠 Dashboard","📓 Trade Journal","📈 Performance","💰 Risk Calculator"],
-                  label_visibility="collapsed")
+    nav_items = [
+        ("🏠 Dashboard", "Dashboard"),
+        ("📓 Trade Journal", "Journal"),
+        ("📈 Performance", "Performance"),
+        ("💰 Risk Calculator", "Risk"),
+    ]
+    for label, key in nav_items:
+        active = st.session_state.get("active_page","Dashboard") == key
+        if st.button(label, use_container_width=True,
+                     type="primary" if active else "secondary", key=f"nav_{key}"):
+            st.session_state["active_page"] = key
+            st.rerun()
 
+    st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("≫ More"):
-        extra=st.radio("",["💎 Pricing","👑 Admin Panel" if atype=="admin" else "ℹ️ About"],
-                       label_visibility="collapsed")
-        page=extra
+        more_items = [("💎 Pricing","Pricing"),
+                      ("👑 Admin Panel","Admin") if atype=="admin" else ("ℹ️ About","About")]
+        for label, key in more_items:
+            if st.button(label, use_container_width=True, key=f"nav_{key}"):
+                st.session_state["active_page"] = key
+                st.rerun()
+
+    if "active_page" not in st.session_state:
+        st.session_state["active_page"] = "Dashboard"
+    page = st.session_state["active_page"]
 
     st.divider()
-    if st.button("🚪 Logout",use_container_width=True):
+    if st.button("🚪 Logout", use_container_width=True):
         clear_login()
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
@@ -642,7 +660,7 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════════
 # PAGE: DASHBOARD
 # ════════════════════════════════════════════════════════════
-if "Dashboard" in page:
+if page == "Dashboard":
     now=datetime.datetime.utcnow().strftime("%A %d %b %Y  •  %H:%M UTC")
     st.markdown(f"""<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px'>
       <div style='font-size:24px;font-weight:900'>📊 Sparro FX AI — Dashboard</div>
@@ -952,7 +970,7 @@ if "Dashboard" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: TRADE JOURNAL
 # ════════════════════════════════════════════════════════════
-elif "Journal" in page:
+elif page == "Journal":
     st.title("📓 Trade Journal")
     if not premium: st.error("🔒 Premium only."); st.stop()
     with st.expander("➕ Log a Trade"):
@@ -978,7 +996,7 @@ elif "Journal" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: PERFORMANCE
 # ════════════════════════════════════════════════════════════
-elif "Performance" in page:
+elif page == "Performance":
     st.title("📈 Performance Dashboard")
     if not premium: st.error("🔒 Premium only."); st.stop()
     if not st.session_state.trade_journal: st.info("Log trades in the Journal to see stats."); st.stop()
@@ -994,7 +1012,7 @@ elif "Performance" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: RISK CALCULATOR
 # ════════════════════════════════════════════════════════════
-elif "Risk" in page:
+elif page == "Risk":
     st.title("💰 Risk Calculator")
     c1,c2=st.columns(2)
     with c1:
@@ -1015,7 +1033,7 @@ elif "Risk" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: PRICING
 # ════════════════════════════════════════════════════════════
-elif "Pricing" in page:
+elif page == "Pricing":
     st.title("💎 Plans & Pricing")
     st.divider()
     c1,c2=st.columns(2)
@@ -1045,7 +1063,7 @@ elif "Pricing" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: ABOUT
 # ════════════════════════════════════════════════════════════
-elif "About" in page:
+elif page == "About":
     st.title("ℹ️ About Sparro FX AI")
     st.markdown("""
 **Sparro FX AI** uses 8 institutional-grade strategies to generate high-probability trade signals.
@@ -1071,7 +1089,7 @@ elif "About" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: ADMIN PANEL
 # ════════════════════════════════════════════════════════════
-elif "Admin" in page:
+elif page == "Admin":
     if atype!="admin": st.error("🔒 Admin only."); st.stop()
     st.title("👑 Admin Panel")
 
