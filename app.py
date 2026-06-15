@@ -1252,4 +1252,3 @@ ANTHROPIC_API_KEY = "sk-ant-xxx"
         c3.metric("Monthly Revenue",f"${pc*15}"); c4.metric("Annual",f"${pc*15*12}")
         st.markdown("---\n**🔗 Links**")
         st.markdown("- [Streamlit Cloud](https://share.streamlit.io)\n- [GitHub](https://github.com/sparroxhalo-stack/ai-forex-analyzer)\n- [Anthropic Console](https://console.anthropic.com)")
-
