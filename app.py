@@ -26,8 +26,43 @@ body, .main { background: #0d1117; color: #e6edf3; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 .smc-badge { background: #7c3aed; color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
 .div-badge { background: #e67e22; color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+@media (max-width: 768px) {
+  .block-container { padding: 0.5rem !important; }
+  .stTabs [data-baseweb="tab"] { padding: 5px 7px !important; font-size: 10px !important; }
+  h1 { font-size: 20px !important; } h2 { font-size: 17px !important; }
+}
+.signal-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 6px; margin-bottom: 10px; }
+.signal-card { background: #00000044; border-radius: 7px; padding: 8px; text-align: center; }
+.signal-label { font-size: 10px; color: #8b949e; margin-bottom: 3px; }
+.signal-value { font-size: 12px; font-weight: 700; }
+@keyframes flash-green { 0%,100%{opacity:1} 50%{opacity:0.4} }
+@keyframes flash-red { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.flash-buy { animation: flash-green 0.5s ease 3; border-color: #3fb950 !important; }
+.flash-sell { animation: flash-red 0.5s ease 3; border-color: #f85149 !important; }
 </style>
 """, unsafe_allow_html=True)
+
+# Sound alert injector
+def play_sound(sig_type):
+    freq = "880" if "BUY" in sig_type else "440"
+    freq2 = "1100" if "BUY" in sig_type else "330"
+    st.markdown(f"""<script>
+    (function(){{
+      try {{
+        var c=new (window.AudioContext||window.webkitAudioContext)();
+        function beep(f,t,d){{
+          var o=c.createOscillator(),g=c.createGain();
+          o.connect(g);g.connect(c.destination);
+          o.frequency.value=f;o.type='sine';
+          g.gain.setValueAtTime(0.3,t);
+          g.gain.exponentialRampToValueAtTime(0.001,t+d);
+          o.start(t);o.stop(t+d);
+        }}
+        beep({freq},c.currentTime,0.4);
+        beep({freq2},c.currentTime+0.45,0.35);
+      }} catch(e){{}}
+    }})();
+    </script>""", unsafe_allow_html=True)
 
 # ─── PERSISTENT LOGIN ─────────────────────────────────────────────────────────
 def _tok(at, em, ts):
@@ -633,6 +668,15 @@ if pg=="Dashboard":
                                 "entry":entry,"sl":sl,"tp1":tp1,"tp2":tp2,"tp3":tp3,
                                 "res":res,"tf":tf_res,"mtf_sig":mtf_sig,"mtf_note":mtf_note,"mtf_ok":mtf_ok})
                 hits.sort(key=lambda x:(x["mtf_ok"],x["conf"]),reverse=True)
+                # Visual + sound alert for new strong signals
+                if hits:
+                    top=hits[0]
+                    play_sound(top["sig"])
+                    flash_cls="flash-buy" if "BUY" in top["sig"] else "flash-sell"
+                    st.markdown(f"""<div class='{flash_cls}' style='background:#161b22;border-radius:10px;
+                    padding:10px;text-align:center;margin-bottom:10px;border:2px solid {"#3fb950" if "BUY" in top["sig"] else "#f85149"}'>
+                    <b style='font-size:15px'>{"🚀" if "BUY" in top["sig"] else "📉"} NEW SIGNAL ALERT — {top["name"]} {top["sig"]}</b>
+                    </div>""", unsafe_allow_html=True)
 
             if not hits:
                 st.markdown("""<div style='background:#161b22;border:1px solid #30363d;
