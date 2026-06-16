@@ -8,7 +8,7 @@ import requests
 import hashlib
 
 # ─── APP CONFIGURATION ────────────────────────────────────────────────────────
-st.set_page_config(page_title="Sparro FX AI Core", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Sp trix FX AI Core", layout="wide", page_icon="🚀")
 
 # Premium Mobile-Optimized Dark UI Styling
 st.markdown("""
