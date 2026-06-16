@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import requests
+import hashlib
 
 # ─── APP CONFIGURATION ────────────────────────────────────────────────────────
 st.set_page_config(page_title="Sparro FX AI Core", layout="wide", page_icon="🚀")
@@ -19,6 +20,7 @@ body,.main{background:#0d1117;color:#e6edf3}
 .stTabs [aria-selected="true"]{background:linear-gradient(90deg,#0072ff,#00c6ff) !important;color:#fff !important}
 .stMetric{background:#161b22;border-radius:10px;padding:12px}
 .stProgress>div>div{background:linear-gradient(90deg,#00c6ff,#0072ff)}
+.login-box{background:#161b22;border-radius:16px;padding:28px;border:1px solid #30363d}
 .card{background:#161b22;border-radius:12px;padding:16px;margin-bottom:10px;border:1px solid #30363d}
 .academy-card{background:#1f2937;border-radius:12px;padding:20px;margin-bottom:15px;border-left:5px solid #7c3aed}
 .pulse-dot{display:inline-block;width:9px;height:9px;background:#3fb950;border-radius:50%;margin-right:6px;animation:blink 1.2s infinite}
@@ -38,8 +40,11 @@ def _sec(k, fb):
     try: return st.secrets.get(k, fb)
     except: return fb
 
+AI_KEY = _sec("ANTHROPIC_API_KEY", "")
 TELEGRAM_BOT_TOKEN = _sec("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = _sec("TELEGRAM_CHAT_ID", "")
+SUPABASE_URL = _sec("SUPABASE_URL", "")
+SUPABASE_KEY = _sec("SUPABASE_KEY", "")
 TELEGRAM_CHANNEL_URL = "https://t.me/boost?c=4313217755"
 
 # ─── SPEED & CACHING OPTIMIZATION ──────────────────────────────────────────────
@@ -74,11 +79,68 @@ def broadcast_to_telegram(asset, signal, confidence, entry, sl, tp1):
     except:
         pass
 
-# Initialize Persistent State Storage for Journal
-if "journal" not in st.session_state:
-    st.session_state.journal = []
-if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
+# ─── USER DATABASE API MANAGEMENT (SUPABASE) ───────────────────────────────────
+def supabase_request(endpoint, method="GET", payload=None):
+    if not SUPABASE_URL or not SUPABASE_KEY: return None
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
+    url = f"{SUPABASE_URL}/rest/v1/{endpoint}"
+    try:
+        if method == "GET": r = requests.get(url, headers=headers, timeout=10)
+        elif method == "POST": r = requests.post(url, headers=headers, json=payload, timeout=10)
+        if r.status_code in [200, 201]: return r.json()
+    except: pass
+    return None
+
+def verify_user(email, password):
+    # Free users pass directly without typing a password token
+    if email and not password:
+        return "free"
+    
+    # Custom Hardcoded Backup Passwords Updated
+    if password == "sparro256#": return "admin"
+    if password == "freeuser256": return "premium"
+    
+    if not SUPABASE_URL: return None
+    
+    hashed_pw = hashlib.sha256(password.encode()).hexdigest()
+    res = supabase_request(f"users?email=eq.{email}&password_hash=eq.{hashed_pw}", "GET")
+    if res and len(res) > 0:
+        return res[0].get("account_type", "free")
+    return None
+
+# ─── PERSISTENT SESSION TRACKING ──────────────────────────────────────────────
+def _tok(at, em, ts):
+    return hashlib.sha256(f"{at}|{em}|{ts}|fx2026".encode()).hexdigest()[:16]
+
+def save_session(at, em, ts=""):
+    st.query_params["s"] = f"{at}|{em}|{ts}|{_tok(at,em,ts)}"
+
+def load_session():
+    try:
+        raw = st.query_params.get("s", "")
+        if not raw: return None
+        at, em, ts, tok = raw.split("|")
+        if tok != _tok(at, em, ts): return None
+        return {"account_type": at, "email": em, "trial_start": datetime.datetime.fromisoformat(ts) if ts else None}
+    except: return None
+
+# Initialize App Sessions
+DEFS = {"logged_in": False, "account_type": None, "trial_start": None, "email": "", "journal": [], "page": "Dashboard", "_loaded": False}
+for k, v in DEFS.items():
+    if k not in st.session_state: st.session_state[k] = v
+
+if not st.session_state._loaded:
+    s = load_session()
+    if s: st.session_state.update(logged_in=True, email=s["email"], account_type=s["account_type"], trial_start=s["trial_start"])
+    st.session_state._loaded = True
+
+TRIAL_H = 48
+def hours_left():
+    if not st.session_state.trial_start: return 0
+    return max(0, TRIAL_H - int((datetime.datetime.now() - st.session_state.trial_start).total_seconds() / 3600))
+
+def is_pro():
+    return st.session_state.account_type in ("admin", "premium")
 
 # ─── HIGH-POWER SMC LOGIC & STRUCTURAL SCANNERS ───────────────────────────────
 def s_liquidity_sweep(df):
@@ -170,6 +232,9 @@ SPECIALISTS = {
     "USD/JPY": {"sym": "USDJPY=X", "icon": "¥", "color": "#ff44aa", "best": ["SMC Order Blocks", "SMC Fair Value Gap"], "period": "6mo"}
 }
 
+# Free Users see first 3 pairs, Premium/Admin see all pairs
+pairs = SPECIALISTS if is_pro() else dict(list(SPECIALISTS.items())[:3])
+
 def run_strats(sym, period="6mo", asset_name=None):
     df = get_df(sym, period)
     if df is None or len(df) < 50: return {}, 0, "WAIT"
@@ -210,7 +275,7 @@ def get_news_events():
         if r.status_code == 200:
             return [{"Currency": e.get("currency", ""), "Event": e.get("title", ""), "Impact": e.get("impact", "")} for e in r.json() if e.get("impact") == "High"]
     except: pass
-    return [{"Currency": "USD", "Event": "Macro FOMC Balance Liquidity Volatility", "Impact": "High"}]
+    return [{"Currency": "USD", "Event": "Macro Interest Rate Projection Volatility", "Impact": "High"}]
 
 def auto_ticket(asset, sig, conf, entry, sl, tp1, src="Auto Scanner"):
     id_num = len(st.session_state.journal)
@@ -222,7 +287,7 @@ def auto_ticket(asset, sig, conf, entry, sl, tp1, src="Auto Scanner"):
     if conf >= 80:
         broadcast_to_telegram(asset, sig, conf, entry, sl, tp1)
 
-# ─── VISUAL INTERFACE IMPLEMENTATIONS ──────────────────────────────────────────
+# ─── FRONT END VISUAL COMPONENTS ──────────────────────────────────────────────
 def specialist_header(name):
     spec = SPECIALISTS.get(name)
     if not spec: return
@@ -231,7 +296,7 @@ def specialist_header(name):
 def banner(sig, asset, conf):
     if "STRONG" in sig:
         col, bg = ("#3fb950", "linear-gradient(135deg,#0d5c2e,#1a7a3e)") if "BUY" in sig else ("#f85149", "linear-gradient(135deg,#5c0d0d,#7a1a1a)")
-        st.markdown(f"""<div style='background:{bg};border:2px solid {col};border-radius:14px;padding:20px;text-align:center;margin-bottom:12px'><div style='font-size:24px;font-weight:900;color:{col}'>🔥 {sig} ENGINE CONFLUENCE RUNNING</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style='background:{bg};border:2px solid {col};border-radius:14px;padding:20px;text-align:center;margin-bottom:12px'><div style='font-size:24px;font-weight:900;color:{col}'>🔥 {sig} ENGINE CONFLUENCE RUNNING ({conf}%)</div></div>""", unsafe_allow_html=True)
     elif sig in ("BUY", "SELL"):
         col, bg = ("#3fb950", "#0d2b1a") if "BUY" in sig else ("#f85149", "#2b0d0d")
         st.markdown(f"""<div style='background:{bg};border:2px solid {col};border-radius:14px;padding:16px;text-align:center;margin-bottom:12px'><div style='font-size:18px;font-weight:800;color:{col}'>🟢 {sig} SETUP TRIGGERED ({conf}%)</div></div>""", unsafe_allow_html=True)
@@ -250,12 +315,38 @@ def chart(sym, sig, entry, sl, tp1):
     fig.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font=dict(color="#e6edf3"), height=360, margin=dict(l=20,r=20,t=20,b=20), xaxis_rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
+# ─── GATEWAY LAYER ────────────────────────────────────────────────────────────
+if not st.session_state.logged_in:
+    st.markdown("<h2 style='text-align:center;margin-top:50px'>🚀 Sparro FX AI Gateway</h2>", unsafe_allow_html=True)
+    _, mid, _ = st.columns([1, 1.5, 1])
+    with mid:
+        st.markdown("<div class='login-box'>", unsafe_allow_html=True)
+        em = st.text_input("Email Profile")
+        pw = st.text_input("Secret Token Phrase (Leave blank if Free User)", type="password")
+        st.caption("ℹ️ Free users only need to provide an email profile to browse basic assets.")
+        
+        if st.button("Access Dashboard Core", use_container_width=True, type="primary"):
+            if em:
+                at = verify_user(em, pw)
+                if at:
+                    st.session_state.update(logged_in=True, account_type=at, email=em)
+                    save_session(at, em)
+                    st.rerun()
+                else:
+                    st.error("Invalid token selection combination.")
+            else:
+                st.warning("Please enter your email profile registration.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
 # ─── NAVIGATION SIDEBAR ────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("<h3 style='color:#00c6ff'>🚀 Sparro Engine</h3>", unsafe_allow_html=True)
+    st.markdown("### <span class='pulse-dot'></span> Sparro Engine", unsafe_allow_html=True)
+    st.caption(f"Handle: {st.session_state.email} ({st.session_state.account_type.upper()})")
     st.markdown(f"<a href='{TELEGRAM_CHANNEL_URL}' class='tg-btn' target='_blank'>📱 Telegram Signal Link</a>", unsafe_allow_html=True)
     st.divider()
     navs = [("🏠 Scanner Core Matrix", "Dashboard"), ("🏫 Sparro SMC Academy", "Academy"), ("🎫 Open Ticket Dashboard", "Tickets"), ("📓 System History Logs", "Journal")]
+    if st.session_state.account_type == "admin": navs.append(("🔐 Admin User Console", "Admin"))
     for lbl, k in navs:
         if st.button(lbl, use_container_width=True, type="primary" if st.session_state.page == k else "secondary"):
             st.session_state.page = k; st.rerun()
@@ -264,7 +355,7 @@ with st.sidebar:
 pg = st.session_state.page
 
 if pg == "Dashboard":
-    st.markdown("### 🏠 Matrix Scanning Interface Core")
+    st.markdown("### <span class='pulse-dot'></span> Matrix Scanning Interface Core", unsafe_allow_html=True)
     t1, t2 = st.tabs(["📊 Scanner Feed", "🔬 Technical Analytics Window"])
     
     with t1:
@@ -276,7 +367,7 @@ if pg == "Dashboard":
                     
         with st.spinner("Analyzing cross-confluences..."):
             hits = []
-            for name, spec_data in SPECIALISTS.items():
+            for name, spec_data in pairs.items():
                 res, conf, sig = run_strats(spec_data["sym"], asset_name=name)
                 if sig != "WAIT":
                     entry, sl, tp1 = get_setup(spec_data["sym"], sig, asset_name=name)
@@ -285,19 +376,18 @@ if pg == "Dashboard":
             st.info("Continuous liquidity hunting scanning. Standard equilibrium bands stable.")
         for idx, h in enumerate(hits):
             col = "#3fb950" if "BUY" in h["sig"] else "#f85149"
-            st.markdown(f"<div class='card' style='border-left:5px solid {col}'><h4>{h['name']} — {h['sig']} ({h['conf']}% Match)</h4><p>Target: {h['entry']} | SL: {h['sl']} | TP1: {h['tp1']}</p></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card' style='border-left:5px solid {col}'><h4>{h['name']} — {h['sig']} ({h['conf']}% Match Matrix)</h4><p>Target: {h['entry']} | SL: {h['sl']} | TP1: {h['tp1']}</p></div>", unsafe_allow_html=True)
             if st.button(f"Inject Ledger Token Target #{idx}", key=f"inj_{idx}"):
                 auto_ticket(h['name'], h['sig'], h['conf'], h['entry'], h['sl'], h['tp1'])
                 st.success("Position pushed to active open pipeline ledger.")
 
     with t2:
-        sel = st.selectbox("Select Core Frame Index Asset", list(SPECIALISTS.keys()))
-        sym = SPECIALISTS[sel]["sym"]
+        sel = st.selectbox("Select Core Frame Index Asset", list(pairs.keys()))
+        sym = pairs[sel]["sym"]
         if sel in SPECIALISTS: specialist_header(sel)
         res, conf, sig = run_strats(sym, asset_name=sel)
         banner(sig, sel, conf)
         
-        # FIXED ARGUMENT CRASH FROM SCREENSHOT
         setup_vals = get_setup(sym, sig, asset_name=sel)
         entry_v, sl_v, tp1_v = (setup_vals[0], setup_vals[1], setup_vals[2]) if setup_vals[0] is not None else (None, None, None)
         chart(sym, sig, entry_v, sl_v, tp1_v)
@@ -309,13 +399,14 @@ if pg == "Dashboard":
 # ─── ACADEMY WINDOW ───────────────────────────────────────────────────────────
 elif pg == "Academy":
     st.markdown("### 🏫 Sparro SMC Academy")
-    st.markdown("*Mastering Institutional Order Flow & Liquidity Engineering on Mobile.*")
+    st.markdown("*Mastering Institutional Order Flow & Timeframe Stratification.*")
     st.divider()
     
     lesson = st.selectbox("Select Academy Module", [
         "1. Core Market Structure & Bias", 
         "2. Smart Money Order Blocks (OB)", 
-        "3. Liquidity Pools & Stop Hunts"
+        "3. Liquidity Pools & Stop Hunts",
+        "4. Strategy Profiling: Scalping vs Day Trading vs Swing Trading"
     ])
     
     if lesson == "1. Core Market Structure & Bias":
@@ -366,6 +457,31 @@ elif pg == "Academy":
         """)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    elif lesson == "4. Strategy Profiling: Scalping vs Day Trading vs Swing Trading":
+        st.markdown("<div class='academy-card'><h3>Module 4: Managing Structural Timeframes</h3>", unsafe_allow_html=True)
+        st.markdown("""
+        To capture clean market plays, your operational style must match your daily schedule and phone routine. Institutions run different calculations based on execution speeds.
+        
+        #### ⚡ 1. High-Velocity Scalping
+        * **Core Concept:** Capturing rapid, small fractional adjustments inside immediate session momentum.
+        * **Execution Timeframes:** Analyzed on the M5 chart; executed on the M1 layout.
+        * **Holding Duration:** Trades are opened and manually closed within **3 minutes to 45 minutes**.
+        * **Rule:** Requires pure screen focus—ideal for quick compounding sequences on Gold (XAU/USD).
+        
+        #### 🌅 2. Intraday Day Trading
+        * **Core Concept:** Executing entries based on the daily session expansion range (London or New York session blocks).
+        * **Execution Timeframes:** Tracked on the H1 structure; entries executed on the M15 or M5 blocks.
+        * **Holding Duration:** Positions are held for **2 hours to 8 hours**.
+        * **Rule:** All positions are completely closed out before the final daily market rollover to protect account margins from swap spikes.
+        
+        #### 🎯 3. Macro Swing Trading
+        * **Core Concept:** Riding long-term algorithmic trends and capturing major structural reversals across higher distribution curves.
+        * **Execution Timeframes:** Macro bias analyzed on the Daily (D1) framework; execution managed on H4 charts.
+        * **Holding Duration:** Trades are left running for **2 days to 3 weeks**.
+        * **Rule:** Requires deep patience, wide stop-losses to absorb daily minor volatility wicks, and lower leverage settings to stay protected.
+        """)
+        st.markdown("</div>", unsafe_allow_html=True)
+
 # ─── TICKETS WINDOW ───────────────────────────────────────────────────────────
 elif pg == "Tickets":
     st.markdown("### 🎫 Open Active Pipeline Ledger Management")
@@ -377,7 +493,7 @@ elif pg == "Tickets":
         for t in open_t:
             st.markdown(f"""
             <div class='card' style='border:1px dashed #58a6ff'>
-                <h4>🏷️ ID #{t['ID']} | {t['Asset']} — Structural {t['Signal']} Setup</h4>
+                <h4>🏷️ ID #{t['ID']} | {t['Asset']} — Structural {t['Signal']} Setup ({t['Confidence']}% Confidence)</h4>
                 <p><b>Matrix Stats:</b> Entry Block: <code>{t['Entry']}</code> | SL Level: <code>{t['SL']}</code> | TP1 Zone: <code>{t['TP1']}</code></p>
                 <p><i>Logged Tracking Engine Notes:</i> {t['Notes'] if t['Notes'] else 'No manual notes appended.'}</p>
             </div>
@@ -408,3 +524,15 @@ elif pg == "Journal":
         st.dataframe(pd.DataFrame(st.session_state.journal), use_container_width=True)
     else: 
         st.info("No historical logs recorded inside active tracking instances.")
+
+# ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
+elif pg == "Admin" and st.session_state.account_type == "admin":
+    st.markdown("### 🔐 Secure Database Administration User Matrix")
+    st.metric("Total System Cloud Allocations Active", f"{len(st.session_state.journal)} Positions Logged")
+    
+    mock_users = [
+        {"Email": "simon_vip@sparro.com", "Tier": "Premium Pro (Admin)", "Authorized_Term": "Master Control System"},
+        {"Email": "alpha_scalper@trade.ug", "Tier": "Premium Pro", "Authorized_Term": "Monthly Sub Active"},
+        {"Email": "guest_9831@gmail.com", "Tier": "Free Network Tier", "Authorized_Term": "No Token Expiration Required"}
+    ]
+    st.table(pd.DataFrame(mock_users))
