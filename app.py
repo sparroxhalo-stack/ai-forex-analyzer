@@ -23,9 +23,9 @@ body,.main{background:#0d1117;color:#e6edf3}
 .login-box{background:#161b22;border-radius:16px;padding:28px;border:1px solid #30363d}
 .card{background:#161b22;border-radius:12px;padding:16px;margin-bottom:10px;border:1px solid #30363d}
 .tier-box{background:#161b22;border-radius:14px;padding:20px;text-align:center;border:2px solid #30363d}
-.tier-box.gold{border-color:#ffd200}
 .pulse-dot{display:inline-block;width:9px;height:9px;background:#3fb950;border-radius:50%;margin-right:6px;animation:blink 1.2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+.tg-btn{background:#0088cc;color:#fff !important;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block;text-align:center;margin-top:10px}
 .smc-badge{background:#7c3aed;color:#fff;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700}
 .gold-badge{background:linear-gradient(90deg,#ffd200,#ff8c00);color:#000;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700}
 .btc-badge{background:linear-gradient(90deg,#f7931a,#ff6600);color:#fff;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700}
@@ -48,9 +48,10 @@ TELEGRAM_BOT_TOKEN = _sec("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = _sec("TELEGRAM_CHAT_ID", "")
 SUPABASE_URL = _sec("SUPABASE_URL", "")
 SUPABASE_KEY = _sec("SUPABASE_KEY", "")
+TELEGRAM_CHANNEL_URL = "https://t.me/boost?c=4313217755"
 
 # ─── SPEED & CACHING OPTIMIZATION ──────────────────────────────────────────────
-@st.cache_data(ttl=300)  # Cache market data for 5 minutes to prevent mobile lag
+@st.cache_data(ttl=300)
 def get_df(sym, period="6mo", interval="1d"):
     try:
         df = yf.download(sym, period=period, interval=interval, progress=False, auto_adjust=True)
@@ -61,7 +62,7 @@ def get_df(sym, period="6mo", interval="1d"):
     except:
         return None
 
-# ─── TELEGRAM SIGNALS BROADCASTER (MONETIZATION UPSELL) ───────────────────────
+# ─── TELEGRAM SIGNALS BROADCASTER ─────────────────────────────────────────────
 def broadcast_to_telegram(asset, signal, confidence, entry, sl, tp1):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return
     emoji = "🚀" if "BUY" in signal else "📉"
@@ -73,7 +74,7 @@ def broadcast_to_telegram(asset, signal, confidence, entry, sl, tp1):
         f"🟢 **Entry Zone:** {round(entry, 4)}\n"
         f"🔴 **Stop Loss:** {round(sl, 4)}\n"
         f"🔵 **Take Profit 1:** {round(tp1, 4)}\n\n"
-        f"📱 Check the dashboard for full multi-timeframe alignment analysis."
+        f"📱 Join premium dashboard tracking: {TELEGRAM_CHANNEL_URL}"
     )
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -81,7 +82,7 @@ def broadcast_to_telegram(asset, signal, confidence, entry, sl, tp1):
     except:
         pass
 
-# ─── SUPABASE INTEGRATED AUTHENTICATION ────────────────────────────────────────
+# ─── USER AUTHENTICATION LAYER ────────────────────────────────────────────────
 def supabase_request(endpoint, method="GET", payload=None):
     if not SUPABASE_URL or not SUPABASE_KEY: return None
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
@@ -94,12 +95,10 @@ def supabase_request(endpoint, method="GET", payload=None):
     return None
 
 def verify_user(email, password):
-    # Fallback to standard admin check if Supabase secrets are empty
     if not SUPABASE_URL:
         if password == _sec("ADMIN_PASSWORD", "sparro_admin_2026"): return "admin"
         if password == _sec("PREMIUM_PASSWORD", "sparro_pro_2026"): return "premium"
         return None
-    
     hashed_pw = hashlib.sha256(password.encode()).hexdigest()
     res = supabase_request(f"users?email=eq.{email}&password_hash=eq.{hashed_pw}", "GET")
     if res and len(res) > 0:
@@ -123,7 +122,7 @@ def load_session():
     except: return None
 
 # Initialize Session States
-DEFS = {"logged_in": False, "account_type": None, "trial_start": None, "email": "", "journal": [], "subscribers": [], "sig_history": [], "page": "Dashboard", "_loaded": False}
+DEFS = {"logged_in": False, "account_type": None, "trial_start": None, "email": "", "journal": [], "sig_history": [], "page": "Dashboard", "_loaded": False}
 for k, v in DEFS.items():
     if k not in st.session_state: st.session_state[k] = v
 
@@ -181,9 +180,9 @@ def s_rsi(df):
         ph = [i for i in range(1, len(prices) - 1) if prices[i] > prices[i - 1] and prices[i] > prices[i + 1]]
         pl = [i for i in range(1, len(prices) - 1) if prices[i] < prices[i - 1] and prices[i] < prices[i + 1]]
         if len(ph) >= 2 and prices[ph[-1]] > prices[ph[-2]] and rsis[ph[-1]] < rsis[ph[-2]]:
-            return "SELL", f"RSI={round(rv,1)} — Structural Bearish Divergence (Reversal Engine Triggered)"
+            return "SELL", f"RSI={round(rv,1)} — Structural Bearish Divergence"
         if len(pl) >= 2 and prices[pl[-1]] < prices[pl[-2]] and rsis[pl[-1]] > rsis[pl[-2]]:
-            return "BUY", f"RSI={round(rv,1)} — Structural Bullish Divergence (Reversal Engine Triggered)"
+            return "BUY", f"RSI={round(rv,1)} — Structural Bullish Divergence"
         if rv > 60: return "BUY", "Aggressive Buying pressure building"
         if rv < 40: return "SELL", "Aggressive Liquidations active"
         return "NEUTRAL", "Oscillator resting at Equilibrium"
@@ -200,44 +199,38 @@ def s_ob(df):
             if c.iloc[idx] > o.iloc[idx] and c.iloc[idx + 1] < o.iloc[idx + 1] and c.iloc[idx + 2] < o.iloc[idx + 2] and c.iloc[idx + 2] < float(l.iloc[idx]):
                 sobs.append((float(l.iloc[idx]), float(h.iloc[idx])))
         for lo, hi in bobs[:3]:
-            if lo <= cp <= hi * 1.003: return "BUY", f"SMC Order Block ({round(lo,2)}-{round(hi,2)}) — Institutional Mitigation Active"
+            if lo <= cp <= hi * 1.003: return "BUY", f"SMC Order Block ({round(lo,2)}-{round(hi,2)})"
         for lo, hi in sobs[:3]:
-            if lo * 0.997 <= cp <= hi: return "SELL", f"SMC Order Block ({round(lo,2)}-{round(hi,2)}) — Institutional Mitigation Active"
+            if lo * 0.997 <= cp <= hi: return "SELL", f"SMC Order Block ({round(lo,2)}-{round(hi,2)})"
         return "NEUTRAL", "Institutional liquidity pools unmitigated"
     except: return "NEUTRAL", "SMC OB error"
 
 def s_fvg(df):
-    # Specialized 50% Premium/Discount Equilibrium Strategy Update
     try:
         h, l, c = df["High"], df["Low"], df["Close"]
         cp = float(c.iloc[-1]); bfvg, sfvg = [], []
         for i in range(2, min(50, len(df) - 3)):
             idx = -i
             ph, nl = float(h.iloc[idx - 1]), float(l.iloc[idx + 1])
-            if nl > ph: bfvg.append((ph, nl, ph + (nl - ph) * 0.5))  # Includes 50% discount equilibrium level
+            if nl > ph: bfvg.append((ph, nl, ph + (nl - ph) * 0.5))
             pl, nh = float(l.iloc[idx - 1]), float(h.iloc[idx + 1])
             if pl > nh: sfvg.append((nh, pl, nh + (pl - nh) * 0.5))
         for lo, hi, eq in bfvg[:5]:
-            if lo <= cp <= hi:
-                lbl = "Discount Area Entry" if cp <= eq else "Premium Entry"
-                return "BUY", f"SMC FVG Imbalance Active ({round(lo,2)}-{round(hi,2)}) — {lbl} at Equilibrium: {round(eq,2)}"
+            if lo <= cp <= hi: return "BUY", f"SMC FVG Imbalance ({round(lo,2)}-{round(hi,2)})"
         for lo, hi, eq in sfvg[:5]:
-            if lo <= cp <= hi:
-                lbl = "Premium Area Entry" if cp >= eq else "Discount Entry"
-                return "SELL", f"SMC FVG Imbalance Active ({round(lo,2)}-{round(hi,2)}) — {lbl} at Equilibrium: {round(eq,2)}"
+            if lo <= cp <= hi: return "SELL", f"SMC FVG Imbalance ({round(lo,2)}-{round(hi,2)})"
         return "NEUTRAL", "Fair value price delivery stabilized"
     except: return "NEUTRAL", "SMC FVG error"
 
 def s_sr(df):
-    # Upgraded to scan daily major structural extreme boundaries
     try:
         h, l, c = df["High"], df["Low"], df["Close"]
         p = float(c.iloc[-1])
         res, sup = float(h.rolling(50).max().iloc[-1]), float(l.rolling(50).min().iloc[-1])
         zone = (res - sup) * 0.08
-        if p >= res - zone: return "SELL", f"Testing Daily Macro Liquidity Resistance ({round(res,2)}) — Watch rejection wicks"
-        if p <= sup + zone: return "BUY", f"Testing Daily Macro Liquidity Support ({round(sup,2)}) — Watch compression bounces"
-        return "NEUTRAL", f"Price running inside intermediate range. Sup: {round(sup,2)} | Res: {round(res,2)}"
+        if p >= res - zone: return "SELL", f"Testing Daily Macro Liquidity Resistance ({round(res,2)})"
+        if p <= sup + zone: return "BUY", f"Testing Daily Macro Liquidity Support ({round(sup,2)})"
+        return "NEUTRAL", f"Range Bound. Sup: {round(sup,2)} | Res: {round(res,2)}"
     except: return "NEUTRAL", "S/R error"
 
 STRATS = {
@@ -249,11 +242,10 @@ STRATS = {
     "Support/Resistance": (s_sr, "🧱", "Macro Extremes")
 }
 
-# ─── STRATEGY SCORING ENGINE ──────────────────────────────────────────────────
 SPECIALISTS = {
-    "Gold (XAU/USD)": {"sym": "GC=F", "icon": "🥇", "badge": "gold-badge", "label": "GOLD", "color": "#ffd200", "best": ["SMC Order Blocks", "Support/Resistance", "EMA Trend"], "why": "Gold maps perfectly to physical liquidity pools and Daily high/low extremes.", "period": "6mo", "tf_best": "Daily + 4H"},
-    "Bitcoin": {"sym": "BTC-USD", "icon": "₿", "badge": "btc-badge", "label": "BTC", "color": "#f7931a", "best": ["SMC Fair Value Gap", "RSI + Divergence", "Support/Resistance"], "why": "Bitcoin fills market imbalances cleanly and drives heavy divergence prints on exhaustion sweeps.", "period": "3mo", "tf_best": "4H + Daily"},
-    "EUR/USD": {"sym": "EURUSD=X", "icon": "€", "badge": "eur-badge", "label": "EUR/USD", "color": "#4488ff", "best": ["EMA Trend", "ADX Strength", "SMC Fair Value Gap"], "why": "Extremely liquid trend follower; respects EMA stack alignments through London/NY overlaps.", "period": "6mo", "tf_best": "1H + 4H"}
+    "Gold (XAU/USD)": {"sym": "GC=F", "icon": "🥇", "badge": "gold-badge", "label": "GOLD", "color": "#ffd200", "best": ["SMC Order Blocks", "Support/Resistance", "EMA Trend"], "why": "Gold maps perfectly to physical liquidity pools.", "period": "6mo", "tf_best": "Daily + 4H"},
+    "Bitcoin": {"sym": "BTC-USD", "icon": "₿", "badge": "btc-badge", "label": "BTC", "color": "#f7931a", "best": ["SMC Fair Value Gap", "RSI + Divergence", "Support/Resistance"], "why": "Bitcoin fills market imbalances cleanly.", "period": "3mo", "tf_best": "4H + Daily"},
+    "EUR/USD": {"sym": "EURUSD=X", "icon": "€", "badge": "eur-badge", "label": "EUR/USD", "color": "#4488ff", "best": ["EMA Trend", "ADX Strength", "SMC Fair Value Gap"], "why": "Liquid trend follower.", "period": "6mo", "tf_best": "1H + 4H"}
 }
 ALL_PAIRS = {"Gold (XAU/USD)": "GC=F", "Bitcoin": "BTC-USD", "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "USDJPY=X", "AUD/USD": "AUDUSD=X", "NASDAQ": "^IXIC", "S&P 500": "^GSPC"}
 FREE_PAIRS = dict(list(ALL_PAIRS.items())[:3])
@@ -261,7 +253,7 @@ pairs = ALL_PAIRS if is_pro() else FREE_PAIRS
 
 def run_strats(sym, period="6mo", asset_name=None):
     df = get_df(sym, period)
-    if df is None or len(df) < 50: return {}, 0, "ERROR"
+    if df is None or len(df) < 50: return {}, 0, "WAIT"
     spec = SPECIALISTS.get(asset_name, None)
     best_strats = spec["best"] if spec else []
     res = {}
@@ -306,24 +298,20 @@ def run_mtf(sym, asset_name=None):
         else: tfs[label] = ("WAIT", 50)
     sigs = [s for s, _ in tfs.values() if s != "WAIT"]
     bc, sc = sum(1 for s in sigs if s == "BUY"), sum(1 for s in sigs if s == "SELL")
-    if bc == 3: ms, mn = "STRONG BUY", "All 3 higher timeframes completely aligned ✅"
+    if bc == 3: ms, mn = "STRONG BUY", "All 3 higher timeframes aligned ✅"
     elif bc == 2: ms, mn = "BUY", "2/3 timeframes structural agreement"
-    elif sc == 3: ms, mn = "STRONG SELL", "All 3 higher timeframes completely aligned ✅"
+    elif sc == 3: ms, mn = "STRONG SELL", "All 3 higher timeframes aligned ✅"
     elif sc == 2: ms, mn = "SELL", "2/3 timeframes structural agreement"
-    else: ms, mn = "WAIT", "Timeframe conflict — structure distribution messy"
+    else: ms, mn = "WAIT", "Timeframe conflict"
     return tfs, ms, mn
 
 def get_setup(sym, direction, asset_name=None):
-    # Specialized contract sizing risk calculator adjustments
     try:
         df = get_df(sym, "3mo"); c = df["Close"]; h = df["High"]; l = df["Low"]; p = float(c.iloc[-1])
         tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
         atr = float(tr.rolling(14).mean().iloc[-1])
-        
-        # Adjust risk padding for highly volatile gold wicks vs indices
         multiplier = 2.0 if asset_name == "Gold (XAU/USD)" else 1.5
         risk = atr * multiplier
-        
         if "BUY" in direction: return p, p - risk, p + risk, p + risk * 2, p + risk * 3
         else: return p, p + risk, p - risk, p - risk * 2, p - risk * 3
     except: return None, None, None, None, None
@@ -335,36 +323,22 @@ def get_fibs(sym):
         return {"0.786": hi - d * 0.214, "0.618": hi - d * 0.382, "0.5": hi - d * 0.5, "0.382": hi - d * 0.618}
     except: return {}
 
-def get_pivots(sym):
-    try:
-        df = get_df(sym, "5d"); prev = df.iloc[-2]
-        hi, lo, cl = float(prev["High"]), float(prev["Low"]), float(prev["Close"])
-        pp = (hi + lo + cl) / 3
-        return {"R1": 2 * pp - lo, "PP": pp, "S1": 2 * pp - hi}
-    except: return {}
-
 def auto_ticket(asset, sig, conf, entry, sl, tp1, tp2, tp3, src="Auto"):
     today = str(datetime.date.today())
-    dup = [t for t in st.session_state.journal if t.get("Asset") == asset and t.get("Date") == today and t.get("Signal") == sig]
-    if dup: return False
     st.session_state.journal.append({"Date": today, "Time": datetime.datetime.now().strftime("%H:%M"), "Asset": asset, "Signal": sig, "Entry": round(entry, 5), "SL": round(sl, 5), "TP1": round(tp1, 5), "TP2": round(tp2, 5), "TP3": round(tp3, 5), "Confidence": conf, "Result": "Open", "Source": src})
-    st.session_state.sig_history.append({"DateTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "Asset": asset, "Signal": sig, "Confidence": conf, "Entry": round(entry, 5), "Result": "Pending"})
-    
-    # Monetization broadcast engine trigger
     if conf >= 80:
         broadcast_to_telegram(asset, sig, conf, entry, sl, tp1)
     return True
 
 # ─── AI DEEP GENERATIVE ENGINE ───────────────────────────────────────────────
 def ai_call(prompt, max_tokens=500):
-    if not AI_KEY: return "Enter dynamic ANTHROPIC_API_KEY in secrets to route system execution."
+    if not AI_KEY: return "Enter your ANTHROPIC_API_KEY in secrets to enable core AI analysis."
     try:
-        # Corrected production Claude 3.5 Sonnet stable model API string identifier
         r = requests.post("https://api.anthropic.com/v1/messages",
             headers={"Content-Type": "application/json", "x-api-key": AI_KEY, "anthropic-version": "2023-06-01"},
             json={"model": "claude-3-5-sonnet-20241022", "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}, timeout=25)
         if r.status_code == 200: return r.json()["content"][0]["text"]
-        return f"AI execution routing down. Status: {r.status_code}"
+        return f"AI gateway down. Status: {r.status_code}"
     except Exception as e: return f"Routing Error: {e}"
 
 def get_news():
@@ -379,7 +353,7 @@ def get_news():
 def specialist_header(name):
     spec = SPECIALISTS.get(name)
     if not spec: return
-    st.markdown(f"""<div style='background:linear-gradient(135deg,#161b22,#0d1117);border:2px solid {spec["color"]};border-radius:12px;padding:14px;margin-bottom:14px'><div style='display:flex;align-items:center;gap:12px'><div style='font-size:32px'>{spec["icon"]}</div><div><div style='font-weight:900;font-size:18px;color:{spec["color"]}'>{name} Specialist Structural Framework</div><div style='font-size:12px;color:#8b949e;margin-top:3px'>Core Engines: <b style='color:{spec["color"]}'>{" · ".join(spec["best"])}</b> &nbsp;|&nbsp; Target Window: <b>{spec["tf_best"]}</b></div><div style='font-size:12px;color:#8b949e;margin-top:3px'>{spec["why"]}</div></div></div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div style='background:linear-gradient(135deg,#161b22,#0d1117);border:2px solid {spec["color"]};border-radius:12px;padding:14px;margin-bottom:14px'><div style='display:flex;align-items:center;gap:12px'><div style='font-size:32px'>{spec["icon"]}</div><div><div style='font-weight:900;font-size:18px;color:{spec["color"]}'>{name} Specialist Structural Framework</div><div style='font-size:12px;color:#8b949e;margin-top:3px'>Core Engines: <b style='color:{spec["color"]}'>{" · ".join(spec["best"])}</b> &nbsp;|&nbsp; Target Window: <b>{spec["tf_best"]}</b></div></div></div></div>""", unsafe_allow_html=True)
 
 def banner(sig, asset, conf):
     spec = SPECIALISTS.get(asset)
@@ -393,37 +367,34 @@ def banner(sig, asset, conf):
     else:
         st.markdown(f"""<div style='background:#161b22;border:1px solid #30363d;border-radius:14px;padding:14px;text-align:center;margin-bottom:12px'><div style='font-size:15px;color:#8b949e'>⏳ STAND ASIDE — {asset} Structure out of parameter range</div></div>""", unsafe_allow_html=True)
 
-def chart(sym, name, sig, entry, sl, tp1, tp2, ckey="chart", asset_name=None):
+def chart(sym, name, sig, entry, sl, tp1, ckey="chart", asset_name=None):
     df = get_df(sym, "3mo", "1d")
     if df is None: st.warning("Execution engine chart stream disconnected"); return
-    cl = df["Close"]; e20, e50, e200 = cl.ewm(20).mean(), cl.ewm(50).mean(), cl.ewm(200).mean()
+    cl = df["Close"]; e20, e200 = cl.ewm(20).mean(), cl.ewm(200).mean()
     dates = df.index; fig = go.Figure()
     if "Open" in df.columns:
         fig.add_trace(go.Candlestick(x=dates, open=df["Open"], high=df["High"], low=df["Low"], close=cl, name="Price Delivery", increasing_line_color="#3fb950", decreasing_line_color="#f85149"))
     else:
         fig.add_trace(go.Scatter(x=dates, y=cl, name="Price Line", line=dict(color="#58a6ff", width=2)))
     
-    # Enhanced specialist execution styling parameters
-    ema200_color = "#ffd200" if asset_name == "Gold (XAU/USD)" else "#da70d6"
-    ema200_width = 2.5 if asset_name == "Gold (XAU/USD)" else 1.2
-    fig.add_trace(go.Scatter(x=dates, y=e20, name="EMA20 Structural", line=dict(color="#ffd700", width=1, dash="dot")))
-    fig.add_trace(go.Scatter(x=dates, y=e200, name="EMA200 Macro Base", line=dict(color={ema200_color}, width=ema200_width, dash="dash")))
+    fig.add_trace(go.Scatter(x=dates, y=e20, name="EMA20", line=dict(color="#ffd700", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=dates, y=e200, name="EMA200", line=dict(color="#da70d6", width=1.5, dash="dash")))
     
-    if entry:
+    if entry and not np.isnan(entry):
         col = "#3fb950" if "BUY" in sig else "#f85149"
         fig.add_hline(y=entry, line_color=col, line_width=2, annotation_text=f"ENTRY {round(entry,4)}")
-        fig.add_hline(y=sl, line_color="#f85149", line_dash="dash", annotation_text=f"INVALIDATION {round(sl,4)}")
-        fig.add_hline(y=tp1, line_color="#3fb950", line_dash="dash", annotation_text=f"TP1 TARGET {round(tp1,4)}")
+        fig.add_hline(y=sl, line_color="#f85149", line_dash="dash", annotation_text=f"SL {round(sl,4)}")
+        fig.add_hline(y=tp1, line_color="#3fb950", line_dash="dash", annotation_text=f"TP1 {round(tp1,4)}")
     
     for lv, pr in get_fibs(sym).items():
-        fig.add_hline(y=pr, line_color="#9b59b6" if lv=="0.618" else "#444", line_width=1, line_dash="dot")
+        fig.add_hline(y=pr, line_color="#444", line_width=1, line_dash="dot")
         
     fig.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", font=dict(color="#e6edf3"), height=400, xaxis=dict(gridcolor="#21262d", rangeslider_visible=False), yaxis=dict(gridcolor="#21262d"), margin=dict(l=40, r=40, t=40, b=40))
     st.plotly_chart(fig, use_container_width=True, key=ckey)
 
 # ─── CORE AUTHENTICATION UI GUARD ────────────────────────────────────────────
 def login_page():
-    st.markdown("""<div style='text-align:center;padding:40px 0 20px'><div style='font-size:50px'>🚀</div><div style='font-size:32px;font-weight:900;background:linear-gradient(90deg,#00c6ff,#0072ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>Sparro FX AI Terminal</div><div style='color:#8b949e;font-size:13px;margin-top:6px'>High-Performance Institutional Structural Edge Scanner</div></div>""", unsafe_allow_html=True)
+    st.markdown("""<div style='text-align:center;padding:40px 0 20px'><div style='font-size:50px'>🚀</div><div style='font-size:32px;font-weight:900;background:linear-gradient(90deg,#00c6ff,#0072ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>Sparro FX AI Terminal</div></div>""", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 2, 1])
     with mid:
         t1, t2 = st.tabs(["🔐 Secure Gateway Access", "🎁 Request Trial Credentials"])
@@ -436,14 +407,14 @@ def login_page():
                 if at:
                     st.session_state.update(logged_in=True, account_type=at, email=em)
                     save_session(at, em); st.rerun()
-                else: st.error("Access rejected. Cryptographic handshake signature failed.")
+                else: st.error("Access rejected. Handshake signature failed.")
             st.markdown("</div>", unsafe_allow_html=True)
         with t2:
             st.markdown("<div class='login-box'>", unsafe_allow_html=True)
             te = st.text_input("Target Delivery Email")
             tn = st.text_input("First Name")
             if st.button("Generate 48hr Trial Token", use_container_width=True):
-                if "@" not in te or not tn.strip(): st.error("Valid authentication registration fields required.")
+                if "@" not in te or not tn.strip(): st.error("Valid fields required.")
                 else:
                     ts = datetime.datetime.now()
                     st.session_state.update(logged_in=True, account_type="trial", trial_start=ts, email=te)
@@ -455,23 +426,23 @@ if st.session_state.account_type == "trial" and hours_left() == 0:
     st.error("⏰ System Sandbox Trial Expired. Establish regular subscription ledger allocation access ($15/mo).")
     st.stop()
 
-# ─── NAVIGATION APPLICATION PANEL CONTROL VIA SIDEBAR ─────────────────────────
+# ─── SIDEBAR CONTROL ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("<h3 style='text-align:center;color:#00c6ff'>🚀 Sparro Engine</h3>", unsafe_allow_html=True)
     st.caption(f"Identity: {st.session_state.email} [{st.session_state.account_type.upper()}]")
-    if st.session_state.account_type == "trial": st.warning(f"Sandbox Window: {hours_left()}h remaining")
+    st.markdown(f"<a href='{TELEGRAM_CHANNEL_URL}' class='tg-btn' target='_blank'>📱 Join Official Telegram Channel</a>", unsafe_allow_html=True)
     st.divider()
     navs = [("🏠 Scanner Core Matrix", "Dashboard"), ("🎫 Open Ticket Management", "Tickets"), ("📓 Structural Ledger Journal", "Journal"), ("💰 Matrix Risk Size Modeler", "Risk")]
     for lbl, k in navs:
         if st.button(lbl, use_container_width=True, type="primary" if st.session_state.page == k else "secondary"):
             st.session_state.page = k; st.rerun()
     st.divider()
-    if st.button("Purge System Allocation Memory (Logout)", use_container_width=True):
+    if st.button("Logout", use_container_width=True):
         st.session_state.clear(); st.query_params.clear(); st.rerun()
 
 pg = st.session_state.page
 
-# ─── RENDER INTERFACE WINDOW: DASHBOARD ───────────────────────────────────────
+# ─── DASHBOARD WINDOW ─────────────────────────────────────────────────────────
 if pg == "Dashboard":
     st.markdown("### 🏠 Matrix Scanning Interface Core")
     t1, t2, t3 = st.tabs(["⚡ Live Confluence Pulse", "🔬 Deep Granular Breakdown", "🗞️ Macro Flow Strategy"])
@@ -486,17 +457,17 @@ if pg == "Dashboard":
                     entry, sl, tp1, tp2, tp3 = get_setup(sym, sig, asset_name=name)
                     if entry:
                         tfs, ms, mn = run_mtf(sym, asset_name=name)
-                        hits.append({"name": name, "sym": sym, "sig": sig, "conf": conf, "entry": entry, "sl": sl, "tp1": tp1, "res": res, "mtf_ok": ("BUY" in ms and "BUY" in sig) or ("SELL" in ms and "SELL" in sig), "is_spec": name in SPECIALISTS})
-            hits.sort(key=lambda x: (x["is_spec"], x["conf"]), reverse=True)
+                        hits.append({"name": name, "sym": sym, "sig": sig, "conf": conf, "entry": entry, "sl": sl, "tp1": tp1, "tp2": tp2, "tp3": tp3, "res": res})
+            hits.sort(key=lambda x: x["conf"], reverse=True)
             
         if not hits:
             st.info("Market pricing stabilized in structural range. Scanning continuous liquidity patterns...")
         else:
             for idx, h in enumerate(hits):
                 col = "#3fb950" if "BUY" in h["sig"] else "#f85149"
-                st.markdown(f"""<div class='card' style='border-left:5px solid {col}'><h4>{h['name']} — {h['sig']} ({h['conf']}% Engine Match)</h4><p>Entry Window Target: <b>{round(h['entry'],4)}</b> | Invalidation Level: <b style='color:#f85149'>{round(h['sl'],4)}</b> | Structural Expansion Point: <b style='color:#3fb950'>{round(h['tp1'],4)}</b></p></div>""", unsafe_allow_html=True)
-                if st.button(f"Inject Invalidation Ledger Entry Token #{idx}", key=f"t_{idx}"):
-                    auto_ticket(h['name'], h['sig'], h['conf'], h['entry'], h['sl'], h['tp1'], h['tp1']*1.02, h['tp1']*1.05, "Pulse Engine")
+                st.markdown(f"""<div class='card' style='border-left:5px solid {col}'><h4>{h['name']} — {h['sig']} ({h['conf']}% Engine Match)</h4><p>Entry Window Target: <b>{round(h['entry'],4)}</b> | Invalidation Level: <b style='color:#f85149'>{round(h['sl'],4)}</b> | Structural Point: <b style='color:#3fb950'>{round(h['tp1'],4)}</b></p></div>""", unsafe_allow_html=True)
+                if st.button(f"Inject Ledger Entry Token #{idx}", key=f"t_{idx}"):
+                    auto_ticket(h['name'], h['sig'], h['conf'], h['entry'], h['sl'], h['tp1'], h['tp2'], h['tp3'], "Pulse Engine")
                     st.success("Ledger Entry Saved.")
 
     with t2:
@@ -505,36 +476,64 @@ if pg == "Dashboard":
         if sel in SPECIALISTS: specialist_header(sel)
         res, conf, sig = run_strats(sym, asset_name=sel)
         banner(sig, sel, conf)
-        chart(sym, sel, sig, *get_setup(sym, sig, asset_name=sel)[:3], ckey="deep", asset_name=sel)
+        
+        # FIXED: Check if get_setup returns elements before blindly unpacking them into chart()
+        setup_vals = get_setup(sym, sig, asset_name=sel)
+        entry_v, sl_v, tp1_v = (setup_vals[0], setup_vals[1], setup_vals[2]) if setup_vals[0] is not None else (None, None, None)
+        chart(sym, sel, sig, entry_v, sl_v, tp1_v, ckey="deep", asset_name=sel)
+        
+        # MISSING FEATURE ADDED: Display the live MTF multi-timeframe grid matrix view
+        st.markdown("#### Higher Timeframe Alignment Architecture")
+        mtf_data, mtf_status, mtf_notes = run_mtf(sym, asset_name=sel)
+        c1, c2, c3 = st.columns(3)
+        with c1: st.metric("Daily Structural Bias", mtf_data.get("Daily", ("WAIT", 0))[0], f"{mtf_data.get('Daily', ('WAIT', 0))[1]}% Engine Match")
+        with c2: st.metric("4-Hour Order Flow", mtf_data.get("4H", ("WAIT", 0))[0], f"{mtf_data.get('4H', ('WAIT', 0))[1]}% Engine Match")
+        with c3: st.metric("1-Hour Liquid Phase", mtf_data.get("1H", ("WAIT", 0))[0], f"{mtf_data.get('1H', ('WAIT', 0))[1]}% Engine Match")
+        st.caption(f"**Matrix Evaluation:** {mtf_notes}")
 
     with t3:
         st.markdown("#### Macro Sentiment Strategy Guide Engine")
+        st.markdown(f"<a href='{TELEGRAM_CHANNEL_URL}' class='tg-btn' style='width:100%' target='_blank'>📱 Join Official Channel for VIP Alerts</a>", unsafe_allow_html=True)
         if not is_pro(): st.error("Upgrade pipeline access to mount automated AI generative summaries.")
         else:
             if st.button("Generate AI Market Intelligence Brief"):
                 with st.spinner("Structuring intelligence payload..."):
                     ctx = get_news().to_string()
-                    briefing = ai_call(f"Write a hyper-focused 3-bullet micro scalping strategy for Gold, BTC, and EURUSD. Base context on tracking institutional order blocks and liquidity voids. Context feed:\n{ctx}", max_tokens=300)
+                    briefing = ai_call(f"Write a focused 3-bullet scalping strategy for Gold, BTC, and EURUSD. Context feed:\n{ctx}", max_tokens=300)
                     st.write(briefing)
 
-# ─── RENDER INTERFACE WINDOW: TICKETS ─────────────────────────────────────────
+# ─── TICKETS WINDOW ───────────────────────────────────────────────────────────
 elif pg == "Tickets":
     st.markdown("### 🎫 Open Pipeline Liquidity Ledgers")
+    
+    # MISSING FEATURE ADDED: Manual Order Placement Entry Form Override
+    with st.expander("➕ Manual Ticket Override Placement"):
+        with st.form("manual_ticket"):
+            m_asset = st.selectbox("Asset", list(pairs.keys()))
+            m_dir = st.selectbox("Direction", ["BUY", "SELL", "STRONG BUY", "STRONG SELL"])
+            m_entry = st.number_input("Entry Price", value=0.0, format="%.5f")
+            m_sl = st.number_input("Stop Loss", value=0.0, format="%.5f")
+            m_tp = st.number_input("Take Profit", value=0.0, format="%.5f")
+            if st.form_submit_button("Force Open Manual Ticket"):
+                auto_ticket(m_asset, m_dir, 100, m_entry, m_sl, m_tp, m_tp, m_tp, "Manual Override")
+                st.success("Manual position successfully pushed into pipeline.")
+                st.rerun()
+
     open_t = [t for t in st.session_state.journal if t.get("Result") == "Open"]
-    if not open_t: st.info("No unmitigated active ticket profiles currently registered inside database storage.")
+    if not open_t: st.info("No active ticket profiles currently open.")
     for idx, tr in enumerate(open_t):
-        st.markdown(f"""<div class='card'><b>{tr['Asset']} ({tr['Signal']})</b><br>Track Entry Base: {tr['Entry']} | Stop Level: {tr['SL']}</div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class='card'><b>{tr['Asset']} ({tr['Signal']})</b> — Source: {tr['Source']}<br>Entry Base: {tr['Entry']} | Stop Level: {tr['SL']} | TP1 Target: {tr['TP1']}</div>""", unsafe_allow_html=True)
         if st.button(f"Close Ticket #{idx} with Profit Take", key=f"c_p_{idx}"):
             tr["Result"] = "Win"; st.rerun()
 
-# ─── RENDER INTERFACE WINDOW: JOURNAL ─────────────────────────────────────────
+# ─── JOURNAL WINDOW ───────────────────────────────────────────────────────────
 elif pg == "Journal":
     st.markdown("### 📓 Database Historical Performance Ledger")
     if st.session_state.journal:
         st.dataframe(pd.DataFrame(st.session_state.journal), use_container_width=True)
     else: st.info("Performance historical transaction logging layer clean.")
 
-# ─── RENDER INTERFACE WINDOW: RISK MODELER ────────────────────────────────────
+# ─── RISK MODELER WINDOW ──────────────────────────────────────────────────────
 elif pg == "Risk":
     st.markdown("### 💰 Risk Profile Matrix Calculator Engine")
     c1, c2 = st.columns(2)
@@ -544,7 +543,7 @@ elif pg == "Risk":
         sl_pips = st.number_input("Invalidation Range (Pips/Points Offset)", min_value=1.0, value=30.0)
     
     risk_cash = bal * (risk_p / 100.0)
-    calculated_lots = round(risk_cash / (sl_pips * 1.0), 2)  # Base asset unit scaling formula
+    calculated_lots = round(risk_cash / (sl_pips * 1.0), 2)
     
     with c2:
         st.metric("Absolute Maximum Loss Allocation Limit", f"${risk_cash:.2f}")
