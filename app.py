@@ -7,339 +7,1726 @@ import datetime
 import requests
 import hashlib
 
-# ─── APP CONFIGURATION ────────────────────────────────────────────────────────
-st.set_page_config(page_title="Sparro FX AI Core", layout="wide", page_icon="🔮")
+st.set_page_config(page_title="Sparro FX AI", layout="wide", page_icon="🚀")
 
-# Ultra-Premium Mobile UI Styling matching PipNex Dark Mode Aesthetics
 st.markdown("""
 <style>
-body,.main {background:#0a0a0c; color:#f3f4f6;}
-.block-container {padding-top:1rem; padding-bottom:1rem;}
-.stTabs [data-baseweb="tab-list"] {gap:6px; background:#121216; border-radius:14px; padding:6px; border:1px solid #1f1f24;}
-.stTabs [data-baseweb="tab"] {border-radius:10px; padding:8px 16px; color:#9ca3af; font-weight:600; font-size:12px; transition:0.3s;}
-.stTabs [aria-selected="true"] {background:#a855f7 !important; color:#fff !important; box-shadow: 0 4px 12px rgba(168,85,247,0.35);}
-.login-box {background:#121216; border-radius:20px; padding:32px; border:1px solid #1f1f24; box-shadow: 0 10px 25px rgba(0,0,0,0.5);}
-.card {background:#121216; border-radius:16px; padding:18px; margin-bottom:12px; border:1px solid #1f1f24;}
-.academy-card {background:#16161f; border-radius:16px; padding:22px; margin-bottom:16px; border-left:6px solid #a855f7;}
-.pulse-dot {display:inline-block; width:10px; height:10px; background:#a855f7; border-radius:50%; margin-right:8px; animation:blink 1.4s infinite;}
-@keyframes blink {0%,100% {opacity:1; transform:scale(1);} 50% {opacity:0.3; transform:scale(0.95);}}
-.tg-btn {background:#0088cc; color:#fff !important; padding:11px 18px; border-radius:10px; text-decoration:none; font-weight:700; display:inline-block; text-align:center; margin-top:8px; width:100%;}
-.news-banner {background:#1e1412; border:1px solid #ef4444; color:#fca5a5; border-radius:12px; padding:14px; margin-bottom:12px; font-size:13px;}
-.pipnex-snapshot {background:#121216; border:1px solid #1f1f24; border-radius:18px; padding:20px; margin-bottom:20px;}
-.pipnex-metric-label {color:#9ca3af; font-size:12px; margin-bottom:2px;}
-.pipnex-metric-value {color:#ffffff; font-size:24px; font-weight:700; margin-bottom:10px;}
-.macro-card {background:#121216; border:1px solid #27272a; border-radius:16px; padding:16px; margin-bottom:12px;}
-.tag-purple {background:rgba(168,85,247,0.15); color:#c084fc; padding:4px 10px; border-radius:8px; font-size:11px; font-weight:600;}
-.tag-red {background:rgba(239,68,68,0.15); color:#f87171; padding:4px 10px; border-radius:8px; font-size:11px; font-weight:600;}
-.tag-amber {background:rgba(245,158,11,0.15); color:#fbbf24; padding:4px 10px; border-radius:8px; font-size:11px; font-weight:600;}
+body,.main{background:#0d1117;color:#e6edf3}
+.block-container{padding-top:1.5rem}
+.stTabs [data-baseweb="tab-list"]{gap:4px;background:#161b22;border-radius:12px;padding:5px}
+.stTabs [data-baseweb="tab"]{border-radius:8px;padding:7px 14px;color:#8b949e;font-weight:600;font-size:12px}
+.stTabs [aria-selected="true"]{background:linear-gradient(90deg,#0072ff,#00c6ff) !important;color:#fff !important}
+.stMetric{background:#161b22;border-radius:10px;padding:12px}
+.stProgress>div>div{background:linear-gradient(90deg,#00c6ff,#0072ff)}
+.login-box{background:#161b22;border-radius:16px;padding:28px;border:1px solid #30363d}
+.card{background:#161b22;border-radius:12px;padding:16px;margin-bottom:10px;border:1px solid #30363d}
+.tier-box{background:#161b22;border-radius:14px;padding:20px;text-align:center;border:2px solid #30363d}
+.tier-box.gold{border-color:#ffd200}
+.pulse-dot{display:inline-block;width:9px;height:9px;background:#3fb950;border-radius:50%;margin-right:6px;animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+.smc-badge{background:#7c3aed;color:#fff;border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700}
+.grade-a{background:linear-gradient(90deg,#238636,#2ea043);color:#fff;border-radius:8px;padding:3px 12px;font-size:14px;font-weight:900}
+.grade-b{background:linear-gradient(90deg,#9e6a03,#d4a017);color:#fff;border-radius:8px;padding:3px 12px;font-size:14px;font-weight:900}
+.grade-c{background:linear-gradient(90deg,#b94040,#da3633);color:#fff;border-radius:8px;padding:3px 12px;font-size:14px;font-weight:900}
 @media(max-width:768px){
-  .block-container {padding:0.4rem !important;}
-  .stTabs [data-baseweb="tab"] {padding:6px 8px !important; font-size:11px !important;}
-  h3 {font-size:16px !important;}
+  .block-container{padding:0.5rem !important}
+  .stTabs [data-baseweb="tab"]{padding:5px 7px !important;font-size:10px !important}
+  h1{font-size:20px !important}
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ─── SECRETS & INTEGRATIONS ──────────────────────────────────────────────────
-def _sec(k, fb):
-    try: return st.secrets.get(k, fb)
-    except: return fb
+# ─── SOUND ─────────────────────────────────────────────────────────────────────
+def play_sound(sig):
+    f1="880" if "BUY" in sig else "440"
+    f2="1100" if "BUY" in sig else "330"
+    st.markdown(f"""<script>(function(){{try{{
+    var c=new(window.AudioContext||window.webkitAudioContext)();
+    function b(f,t,d){{var o=c.createOscillator(),g=c.createGain();
+    o.connect(g);g.connect(c.destination);o.frequency.value=f;o.type='sine';
+    g.gain.setValueAtTime(0.3,t);g.gain.exponentialRampToValueAtTime(0.001,t+d);
+    o.start(t);o.stop(t+d)}}
+    b({f1},c.currentTime,0.4);b({f2},c.currentTime+0.45,0.35);
+    }}catch(e){{}}}})()</script>""",unsafe_allow_html=True)
 
-AI_KEY = _sec("ANTHROPIC_API_KEY", "")
-TELEGRAM_BOT_TOKEN = _sec("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = _sec("TELEGRAM_CHAT_ID", "")
-SUPABASE_URL = _sec("SUPABASE_URL", "")
-SUPABASE_KEY = _sec("SUPABASE_KEY", "")
-TELEGRAM_CHANNEL_URL = "https://t.me/boost?c=4313217755"
-
-# ─── SPEED & CACHING OPTIMIZATION ──────────────────────────────────────────────
-@st.cache_data(ttl=300)
-def get_df(sym, period="6mo", interval="1d"):
-    try:
-        df = yf.download(sym, period=period, interval=interval, progress=False, auto_adjust=True)
-        if df.empty: return None
-        if isinstance(df.columns, pd.MultiIndex): 
-            df.columns = df.columns.get_level_values(0)
-        return df
-    except:
-        return None
-
-# ─── USER DATABASE API MANAGEMENT (SUPABASE) ───────────────────────────────────
-def verify_user(email, password):
-    if email and not password: return "free"
-    if password == "sparro256#": return "admin"
-    if password == "freeuser256": return "premium"
-    if not SUPABASE_URL: return None
-    hashed_pw = hashlib.sha256(password.encode()).hexdigest()
-    res = supabase_request(f"users?email=eq.{email}&password_hash=eq.{hashed_pw}", "GET")
-    if res and len(res) > 0: return res[0].get("account_type", "free")
-    return None
-
-# ─── PERSISTENT SESSION TRACKING ──────────────────────────────────────────────
-def _tok(at, em, ts):
-    return hashlib.sha256(f"{at}|{em}|{ts}|fx2026".encode()).hexdigest()[:16]
-
-def save_session(at, em, ts=""):
-    st.query_params["s"] = f"{at}|{em}|{ts}|{_tok(at,em,ts)}"
-
+# ─── AUTH ──────────────────────────────────────────────────────────────────────
+def _tok(at,em,ts):
+    return hashlib.sha256(f"{at}|{em}|{ts}|fx2024".encode()).hexdigest()[:16]
+def save_session(at,em,ts=""):
+    st.query_params["s"]=f"{at}|{em}|{ts}|{_tok(at,em,ts)}"
 def load_session():
     try:
-        raw = st.query_params.get("s", "")
+        raw=st.query_params.get("s","")
         if not raw: return None
-        at, em, ts, tok = raw.split("|")
-        if tok != _tok(at, em, ts): return None
-        return {"account_type": at, "email": em, "trial_start": datetime.datetime.fromisoformat(ts) if ts else None}
+        at,em,ts,tok=raw.split("|")
+        if tok!=_tok(at,em,ts): return None
+        return {"account_type":at,"email":em,
+                "trial_start":datetime.datetime.fromisoformat(ts) if ts else None}
     except: return None
+def clear_session(): st.query_params.clear()
 
-# Initialize App Sessions
-DEFS = {"logged_in": False, "account_type": None, "trial_start": None, "email": "", "saved_email": "", "journal": [], "page": "Dashboard", "_loaded": False}
-for k, v in DEFS.items():
-    if k not in st.session_state: st.session_state[k] = v
-
+DEFS={"logged_in":False,"account_type":None,"trial_start":None,"email":"",
+      "journal":[],"subscribers":[],"sig_history":[],"page":"Dashboard","_loaded":False}
+for k,v in DEFS.items():
+    if k not in st.session_state: st.session_state[k]=v
 if not st.session_state._loaded:
-    s = load_session()
-    if s: st.session_state.update(logged_in=True, email=s["email"], saved_email=s["email"], account_type=s["account_type"], trial_start=s["trial_start"])
-    st.session_state._loaded = True
+    s=load_session()
+    if s: st.session_state.update(logged_in=True,email=s["email"],
+                                   account_type=s["account_type"],trial_start=s["trial_start"])
+    st.session_state._loaded=True
 
+def _sec(k,fb):
+    try: return st.secrets.get(k,fb)
+    except: return fb
+
+ADM_PW=_sec("ADMIN_PASSWORD","sparro_admin_2024")
+PRE_PW=_sec("PREMIUM_PASSWORD","sparro_pro_2024")
+FREE_PW=_sec("FREE_PASSWORD","sparro_free")
+AI_KEY=_sec("ANTHROPIC_API_KEY","")
+TRIAL_H=48
+
+def hours_left():
+    if not st.session_state.trial_start: return 0
+    return max(0,TRIAL_H-int((datetime.datetime.now()-st.session_state.trial_start).total_seconds()/3600))
 def is_pro():
-    return st.session_state.account_type in ("admin", "premium")
+    at=st.session_state.account_type
+    if at in ("admin","premium"): return True
+    if at=="trial" and hours_left()>0: return True
+    return False
 
-# ─── ALGORITHMIC SCANNERS (BOS, CHOCH, SESSIONS, LIQUIDITY) ───────────────────
-def run_structural_scanners(df):
-    if df is None or len(df) < 30: return "NEUTRAL", "No structure data", "NEUTRAL", "No structure data"
-    close, high, low = df["Close"], df["High"], df["Low"]
-    
-    # Simple BOS/CHoCH detection logic based on recent swing distributions
-    recent_highs = high.iloc[-15:-2].max()
-    recent_lows = low.iloc[-15:-2].min()
-    current_close = close.iloc[-1]
-    
-    bos_status, bos_note = "NEUTRAL", "Consolidating within equilibrium legs"
-    choch_status, choch_note = "NEUTRAL", "Internal range order-flow intact"
-    
-    if current_close > recent_highs:
-        bos_status = "BULLISH"
-        bos_note = f"🟢 Break of Structure confirmed above structural high ({round(recent_highs, 4)})"
-    elif current_close < recent_lows:
-        bos_status = "BEARISH"
-        bos_note = f"🔴 Break of Structure confirmed below structural low ({round(recent_lows, 4)})"
-        
-    if close.iloc[-1] > close.iloc[-4] and close.iloc[-5] < close.iloc[-10]:
-        choch_status = "BULLISH"
-        choch_note = "⚡ Minor Change of Character flags bullish order reallocation"
-    elif close.iloc[-1] < close.iloc[-4] and close.iloc[-5] > close.iloc[-10]:
-        choch_status = "BEARISH"
-        choch_note = "⚡ Minor Change of Character flags bearish institutional liquidation"
-        
-    return bos_status, bos_note, choch_status, choch_note
-
-SPECIALISTS = {
-    "Gold (XAU/USD)": {"sym": "GC=F", "icon": "🥇", "color": "#ffd200"},
-    "Bitcoin": {"sym": "BTC-USD", "icon": "₿", "color": "#f7931a"},
-    "EUR/USD": {"sym": "EURUSD=X", "icon": "€", "color": "#4488ff"},
-    "GBP/USD": {"sym": "GBPUSD=X", "icon": "£", "color": "#00ffcc"},
-    "USD/JPY": {"sym": "USDJPY=X", "icon": "¥", "color": "#ff44aa"}
-}
-pairs = SPECIALISTS if is_pro() else dict(list(SPECIALISTS.items())[:3])
-
-# ─── GATEWAY LAYER (WITH LOGIN RETENTION) ──────────────────────────────────────
-if not st.session_state.logged_in:
-    st.markdown("<h2 style='text-align:center; margin-top:50px; font-weight:800;'>🔮 Sparro FX AI Gateway</h2>", unsafe_allow_html=True)
-    _, mid, _ = st.columns([1, 1.4, 1])
+# ─── LOGIN ─────────────────────────────────────────────────────────────────────
+def login_page():
+    st.markdown("""<div style='text-align:center;padding:40px 0 20px'>
+    <div style='font-size:60px'>🚀</div>
+    <div style='font-size:36px;font-weight:900;background:linear-gradient(90deg,#00c6ff,#0072ff);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent'>Sparro FX AI</div>
+    <div style='color:#8b949e;margin-top:6px'>Realistic AI-Powered Forex & Commodity Signals</div>
+    </div>""",unsafe_allow_html=True)
+    st.markdown("""<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;
+    max-width:700px;margin:0 auto 24px auto'>
+    <div style='background:linear-gradient(135deg,#1a1400,#2a2000);border:2px solid #ffd200;
+    border-radius:12px;padding:14px;text-align:center'>
+    <div style='font-size:24px'>🥇</div>
+    <div style='font-weight:900;color:#ffd200;font-size:15px'>Gold</div>
+    <div style='font-size:11px;color:#8b949e;margin-top:4px'>SMC + S/R + EMA200<br>Specialist Pair</div>
+    </div>
+    <div style='background:linear-gradient(135deg,#1a0d00,#2a1500);border:2px solid #f7931a;
+    border-radius:12px;padding:14px;text-align:center'>
+    <div style='font-size:24px'>₿</div>
+    <div style='font-weight:900;color:#f7931a;font-size:15px'>Bitcoin</div>
+    <div style='font-size:11px;color:#8b949e;margin-top:4px'>FVG + Divergence<br>Specialist Pair</div>
+    </div>
+    <div style='background:linear-gradient(135deg,#00001a,#000033);border:2px solid #4488ff;
+    border-radius:12px;padding:14px;text-align:center'>
+    <div style='font-size:24px'>€</div>
+    <div style='font-weight:900;color:#4488ff;font-size:15px'>EUR/USD</div>
+    <div style='font-size:11px;color:#8b949e;margin-top:4px'>EMA + ADX + FVG<br>Specialist Pair</div>
+    </div>
+    </div>""",unsafe_allow_html=True)
+    _,mid,_=st.columns([1,2,1])
     with mid:
-        st.markdown("<div class='login-box'>", unsafe_allow_html=True)
-        # Pulls saved_email state so fields remain populated if they logged out previously
-        em = st.text_input("Email Profile Registration", value=st.session_state.saved_email)
-        pw = st.text_input("Secret Token Phrase (Leave blank if Free Tier)", type="password")
-        st.caption("ℹ️ Free system tier requires an active profile handles to track open assets.")
-        
-        if st.button("Initialize Platform Core", use_container_width=True, type="primary"):
-            if em:
-                at = verify_user(em, pw)
+        t1,t2,t3=st.tabs(["🔑 Login","🎁 48hr Free Trial","ℹ️ About"])
+        with t1:
+            st.markdown("<div class='login-box'>",unsafe_allow_html=True)
+            em=st.text_input("Email",key="l_em",placeholder="you@email.com")
+            pw=st.text_input("Password",key="l_pw",type="password")
+            rem=st.checkbox("Stay logged in",value=True,key="l_rem")
+            if st.button("🔓 Login",use_container_width=True,type="primary",key="l_btn"):
+                at=("admin" if pw==ADM_PW else "premium" if pw==PRE_PW
+                    else "free" if pw==FREE_PW else None)
                 if at:
-                    st.session_state.update(logged_in=True, account_type=at, email=em, saved_email=em)
-                    save_session(at, em)
+                    st.session_state.update(logged_in=True,account_type=at,email=em)
+                    if rem: save_session(at,em)
                     st.rerun()
-                else: st.error("Access rejected. Verification combination not matched.")
-            else: st.warning("Authentication email layer tracking parameter missing.")
-        st.markdown("</div>", unsafe_allow_html=True)
+                else: st.error("❌ Wrong password.")
+            st.markdown("</div>",unsafe_allow_html=True)
+        with t2:
+            st.markdown("<div class='login-box'>",unsafe_allow_html=True)
+            st.markdown("""<div style='text-align:center;margin-bottom:14px'>
+            <span style='background:linear-gradient(90deg,#ffd200,#ff8c00);color:#000;
+            border-radius:20px;padding:5px 16px;font-weight:700'>🎁 48 Hours FREE — Full Access</span>
+            </div>""",unsafe_allow_html=True)
+            st.markdown("- ✅ All 10 assets incl. Gold, Bitcoin, EUR/USD\n- ✅ Quality-filtered signals (aims for 70%+)\n- ✅ Signal Grade A/B/C + Market Condition\n- ✅ Session timing + Correlation warnings\n- ✅ Auto Trade Tickets + Position Sizing")
+            te=st.text_input("Email",key="t_em",placeholder="you@email.com")
+            tn=st.text_input("Name",key="t_nm",placeholder="First name")
+            if st.button("🚀 Start Free Trial",use_container_width=True,type="primary",key="t_btn"):
+                if "@" not in te: st.error("❌ Valid email needed")
+                elif not tn.strip(): st.error("❌ Name needed")
+                else:
+                    ts=datetime.datetime.now()
+                    st.session_state.update(logged_in=True,account_type="trial",trial_start=ts,email=te)
+                    save_session("trial",te,ts.isoformat()); st.rerun()
+            st.markdown("</div>",unsafe_allow_html=True)
+        with t3:
+            st.markdown("""<div class='login-box'>
+            <h4 style='margin-top:0'>What is Sparro FX AI?</h4>
+            <p style='color:#8b949e'>Realistic signal platform with quality filters designed for 70%+ win rate.
+            Signals only fire when trend, strength, momentum, institutional zones AND session timing all align.</p>
+            <b>🆓 Free</b> — Gold, BTC, EUR/USD + 2 pairs · basic signals<br><br>
+            <b>🎁 Trial 48h</b> — full access · no card<br><br>
+            <b>⚡ Premium $15/mo</b> — everything<br><br>
+            <hr style='border-color:#30363d'>
+            <small style='color:#8b949e'>Trade responsibly. No signal app guarantees profits.</small>
+            </div>""",unsafe_allow_html=True)
+
+if not st.session_state.logged_in: login_page(); st.stop()
+if st.session_state.account_type=="trial" and hours_left()==0:
+    st.error("⏰ Trial ended. Upgrade — $15/mo")
+    if st.button("🔓 Login with premium password",key="exp_btn"):
+        clear_session(); st.session_state.logged_in=False; st.rerun()
     st.stop()
 
-# ─── SIDEBAR CONTROL PANEL ─────────────────────────────────────────────────────
+pro=is_pro(); atype=st.session_state.account_type
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ASSETS & SPECIALIST CONFIG
+# ═══════════════════════════════════════════════════════════════════════════════
+SPECIALISTS={
+    "Gold (XAU/USD)":{"sym":"GC=F","icon":"🥇","color":"#ffd200","label":"GOLD",
+        "best":["SMC Order Blocks","Support/Resistance","EMA Trend"],
+        "why":"Institution-driven. SMC OBs and round numbers ($1900/$2000/$2100) are most reliable. EMA200 is gold's key level.",
+        "sessions":["London","New York"],"tf_best":"Daily + 4H"},
+    "Bitcoin":{"sym":"BTC-USD","icon":"₿","color":"#f7931a","label":"BTC",
+        "best":["SMC Fair Value Gap","RSI + Divergence","Support/Resistance"],
+        "why":"BTC leaves massive FVGs that always fill. RSI divergences on 4H are highly reliable. Round numbers ($60k/$70k/$80k) are magnets.",
+        "sessions":["All"],"tf_best":"4H + Daily"},
+    "EUR/USD":{"sym":"EURUSD=X","icon":"€","color":"#4488ff","label":"EUR/USD",
+        "best":["EMA Trend","ADX Strength","SMC Fair Value Gap"],
+        "why":"Most trend-following pair in forex. EMA stack is highly reliable. ADX confirms strong trends during London/NY overlap.",
+        "sessions":["London","New York"],"tf_best":"1H + 4H"},
+}
+
+ALL_PAIRS={
+    "Gold (XAU/USD)":"GC=F","Bitcoin":"BTC-USD","EUR/USD":"EURUSD=X",
+    "GBP/USD":"GBPUSD=X","USD/JPY":"USDJPY=X","AUD/USD":"AUDUSD=X",
+    "USD/CHF":"USDCHF=X","USD/CAD":"USDCAD=X","NASDAQ":"^IXIC","S&P 500":"^GSPC",
+}
+# Correlated pairs — warning when both signal same direction
+CORRELATIONS=[
+    (["EUR/USD","GBP/USD","AUD/USD"],"USD pairs — same USD exposure"),
+    (["USD/JPY","USD/CHF","USD/CAD"],"USD pairs — same USD exposure"),
+    (["Gold (XAU/USD)","Bitcoin"],"Safe haven/risk assets — correlated in risk-off"),
+]
+FREE_PAIRS=dict(list(ALL_PAIRS.items())[:5])
+pairs=ALL_PAIRS if pro else FREE_PAIRS
+
+# ─── DATA ──────────────────────────────────────────────────────────────────────
+def get_df(sym,period="6mo",interval="1d"):
+    try:
+        df=yf.download(sym,period=period,interval=interval,progress=False,auto_adjust=True)
+        if df.empty: return None
+        if isinstance(df.columns,pd.MultiIndex): df.columns=df.columns.get_level_values(0)
+        return df
+    except: return None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# QUALITY FILTERS — what makes signals realistic
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def check_candle_quality(df):
+    """
+    Filter 1: Candle body filter
+    If the last candle is a doji/indecision (body < 25% of range),
+    the signal is unreliable. Returns True if candle is valid.
+    """
+    try:
+        if "Open" not in df.columns: return True, "No OHLC data"
+        o=float(df["Open"].iloc[-1]); c=float(df["Close"].iloc[-1])
+        h=float(df["High"].iloc[-1]); l=float(df["Low"].iloc[-1])
+        body=abs(c-o); rng=h-l
+        if rng==0: return True,"No range data"
+        ratio=body/rng
+        if ratio<0.25:
+            return False,f"Doji/indecision candle (body={round(ratio*100)}% of range) — wait for conviction"
+        return True,f"Solid candle body ({round(ratio*100)}% of range) ✅"
+    except: return True,"Candle check error"
+
+def check_atr_filter(df):
+    """
+    Filter 2: ATR volatility filter
+    If ATR is extremely low (<0.1% of price) = dead market, avoid
+    If ATR is extremely high (>3% of price) = news spike, avoid
+    Returns True if market has normal volatility.
+    """
+    try:
+        c=df["Close"]; h=df["High"]; l=df["Low"]
+        tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
+        atr=float(tr.rolling(14).mean().iloc[-1])
+        price=float(c.iloc[-1])
+        atr_pct=atr/price*100
+        if atr_pct<0.08: return False,f"ATR too low ({round(atr_pct,2)}%) — dead market, avoid"
+        if atr_pct>4.0:  return False,f"ATR too high ({round(atr_pct,2)}%) — news spike, avoid"
+        return True,f"Normal volatility ATR={round(atr_pct,2)}% ✅"
+    except: return True,"ATR check error"
+
+def check_weekly_trend(sym,sig):
+    """
+    Filter 3: Weekly trend alignment
+    Signal must agree with the weekly timeframe trend.
+    Counter-trend signals on weekly are lower quality.
+    """
+    try:
+        df=get_df(sym,"1y","1wk")
+        if df is None or len(df)<10: return True,"Weekly data unavailable",True
+        c=df["Close"]
+        e20w=float(c.ewm(20).mean().iloc[-1]); e10w=float(c.ewm(10).mean().iloc[-1])
+        pw=float(c.iloc[-1])
+        weekly_bull=pw>e20w and e10w>e20w
+        weekly_bear=pw<e20w and e10w<e20w
+        if "BUY" in sig and weekly_bull:
+            return True,"Weekly trend BULLISH ✅ — signal aligned",True
+        if "SELL" in sig and weekly_bear:
+            return True,"Weekly trend BEARISH ✅ — signal aligned",True
+        if "BUY" in sig and weekly_bear:
+            return False,"Weekly trend BEARISH ⚠️ — buying against weekly trend",False
+        if "SELL" in sig and weekly_bull:
+            return False,"Weekly trend BULLISH ⚠️ — selling against weekly trend",False
+        return True,"Weekly trend neutral — proceed with caution",False
+    except: return True,"Weekly check error",False
+
+def get_session_status(asset_name):
+    """
+    Returns whether we're in the optimal trading session for this asset.
+    """
+    now_utc=datetime.datetime.utcnow()
+    hour=now_utc.hour
+    london_open=7<=hour<16      # 7am-4pm UTC
+    newyork_open=13<=hour<22   # 1pm-10pm UTC
+    asian_open=(hour>=22 or hour<7)
+    spec=SPECIALISTS.get(asset_name,{})
+    sessions=spec.get("sessions",["All"])
+    if "All" in sessions: return True,"24/7 asset — any time is fine ✅"
+    in_london=(london_open and "London" in sessions)
+    in_ny=(newyork_open and "New York" in sessions)
+    if in_london and in_ny: return True,"London/New York overlap — BEST session ✅"
+    if in_london: return True,"London session — good timing ✅"
+    if in_ny: return True,"New York session — good timing ✅"
+    if asian_open:
+        return False,f"Asian session — {', '.join(sessions)} pairs trade better in London/NY"
+    return False,f"Outside optimal session for {asset_name} — lower probability"
+
+def get_market_condition(df):
+    """
+    Detect if market is Trending, Ranging, or Volatile.
+    This tells users how to adjust their approach.
+    """
+    try:
+        c=df["Close"]; h=df["High"]; l=df["Low"]
+        tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
+        atr=float(tr.rolling(14).mean().iloc[-1])
+        atr_ma=float(tr.rolling(14).mean().rolling(14).mean().iloc[-1])
+        up=h.diff(); dn=-l.diff()
+        pdm=up.where((up>dn)&(up>0),0); ndm=dn.where((dn>up)&(dn>0),0)
+        atr_s=tr.ewm(14).mean()
+        pdi=100*(pdm.ewm(14).mean()/atr_s); ndi=100*(ndm.ewm(14).mean()/atr_s)
+        adx=float((100*(pdi-ndi).abs()/(pdi+ndi)).ewm(14).mean().iloc[-1])
+        atr_ratio=atr/atr_ma if atr_ma>0 else 1
+        if atr_ratio>1.5: return "Volatile","⚡","#f7931a","High volatility — reduce position size, use wider stops"
+        if adx>25:        return "Trending","📈","#3fb950","Strong trend — ideal for signals, trend-following works"
+        if adx>18:        return "Moderate","📊","#ffd200","Moderate trend — proceed normally, use standard size"
+        return "Ranging","↔️","#8b949e","Ranging market — lower win rate expected, reduce size or avoid"
+    except: return "Unknown","❓","#8b949e","Market condition unknown"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6 PRECISION STRATEGIES
+# ═══════════════════════════════════════════════════════════════════════════════
+def s_ema(df):
+    c=df["Close"]
+    e20=float(c.ewm(20).mean().iloc[-1]); e50=float(c.ewm(50).mean().iloc[-1])
+    e200=float(c.ewm(200).mean().iloc[-1]); p=float(c.iloc[-1])
+    if e20>e50>e200 and p>e20: return "BUY","EMA20>EMA50>EMA200 — full bullish stack"
+    if e20<e50<e200 and p<e20: return "SELL","EMA20<EMA50<EMA200 — full bearish stack"
+    if e20>e200 and p>e50:     return "BUY","Above EMA200 — long-term uptrend"
+    if e20<e200 and p<e50:     return "SELL","Below EMA200 — long-term downtrend"
+    return "NEUTRAL","EMA stack mixed"
+
+def s_adx(df):
+    try:
+        h=df["High"]; l=df["Low"]; c=df["Close"]
+        tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
+        up=h.diff(); dn=-l.diff()
+        pdm=up.where((up>dn)&(up>0),0); ndm=dn.where((dn>up)&(dn>0),0)
+        atr=tr.ewm(14,min_periods=14).mean()
+        pdi=100*(pdm.ewm(14,min_periods=14).mean()/atr)
+        ndi=100*(ndm.ewm(14,min_periods=14).mean()/atr)
+        adx=float((100*(pdi-ndi).abs()/(pdi+ndi)).ewm(14,min_periods=14).mean().iloc[-1])
+        pv=float(pdi.iloc[-1]); nv=float(ndi.iloc[-1])
+        if adx>=30 and pv>nv: return "BUY", f"ADX={round(adx,1)} — strong uptrend confirmed"
+        if adx>=30 and nv>pv: return "SELL",f"ADX={round(adx,1)} — strong downtrend confirmed"
+        if adx>=20 and pv>nv: return "BUY", f"ADX={round(adx,1)} — moderate uptrend"
+        if adx>=20 and nv>pv: return "SELL",f"ADX={round(adx,1)} — moderate downtrend"
+        return "NEUTRAL",f"ADX={round(adx,1)} — ranging, avoid trend trades"
+    except: return "NEUTRAL","ADX error"
+
+def s_rsi(df):
+    try:
+        c=df["Close"]; d=c.diff()
+        g=d.where(d>0,0).rolling(14).mean(); l=(-d.where(d<0,0)).rolling(14).mean()
+        rsi=100-(100/(1+(g/l))); rv=float(rsi.iloc[-1])
+        prices=c.iloc[-20:].values; rsis=rsi.iloc[-20:].values
+        ph=[i for i in range(1,len(prices)-1) if prices[i]>prices[i-1] and prices[i]>prices[i+1]]
+        pl=[i for i in range(1,len(prices)-1) if prices[i]<prices[i-1] and prices[i]<prices[i+1]]
+        if len(ph)>=2:
+            h1,h2=ph[-2],ph[-1]
+            if prices[h2]>prices[h1] and rsis[h2]<rsis[h1]:
+                return "SELL",f"RSI={round(rv,1)} Bearish Divergence — momentum weakening"
+        if len(pl)>=2:
+            l1,l2=pl[-2],pl[-1]
+            if prices[l2]<prices[l1] and rsis[l2]>rsis[l1]:
+                return "BUY",f"RSI={round(rv,1)} Bullish Divergence — momentum recovering"
+        if rv>60: return "BUY", f"RSI={round(rv,1)} — bullish momentum"
+        if rv>52: return "BUY", f"RSI={round(rv,1)} — building bullish"
+        if rv<40: return "SELL",f"RSI={round(rv,1)} — bearish momentum"
+        if rv<48: return "SELL",f"RSI={round(rv,1)} — building bearish"
+        return "NEUTRAL",f"RSI={round(rv,1)} — neutral"
+    except: return "NEUTRAL","RSI error"
+
+def s_ob(df):
+    try:
+        o=df["Open"]; h=df["High"]; l=df["Low"]; c=df["Close"]
+        cp=float(c.iloc[-1]); bobs=[]; sobs=[]
+        for i in range(2,min(60,len(df)-3)):
+            idx=-i
+            if (c.iloc[idx]<o.iloc[idx] and c.iloc[idx+1]>o.iloc[idx+1]
+                    and c.iloc[idx+2]>o.iloc[idx+2] and c.iloc[idx+2]>float(h.iloc[idx])):
+                bobs.append((float(l.iloc[idx]),float(h.iloc[idx])))
+            if (c.iloc[idx]>o.iloc[idx] and c.iloc[idx+1]<o.iloc[idx+1]
+                    and c.iloc[idx+2]<o.iloc[idx+2] and c.iloc[idx+2]<float(l.iloc[idx])):
+                sobs.append((float(l.iloc[idx]),float(h.iloc[idx])))
+        for lo,hi in bobs[:3]:
+            if lo<=cp<=hi*1.003: return "BUY",f"SMC Bullish OB {round(lo,4)}-{round(hi,4)} — institutional buy zone"
+            if hi<cp<=hi*1.01:   return "BUY",f"SMC Above Bullish OB {round(lo,4)} — institutional support"
+        for lo,hi in sobs[:3]:
+            if lo*0.997<=cp<=hi: return "SELL",f"SMC Bearish OB {round(lo,4)}-{round(hi,4)} — institutional sell zone"
+            if lo*0.99<=cp<lo:   return "SELL",f"SMC Below Bearish OB {round(hi,4)} — institutional resistance"
+        return "NEUTRAL","No active Order Blocks near price"
+    except: return "NEUTRAL","SMC OB insufficient data"
+
+def s_fvg(df):
+    try:
+        h=df["High"]; l=df["Low"]; c=df["Close"]
+        cp=float(c.iloc[-1]); bfvg=[]; sfvg=[]
+        for i in range(2,min(50,len(df)-3)):
+            idx=-i
+            ph=float(h.iloc[idx-1]); nl=float(l.iloc[idx+1])
+            if nl>ph and (nl-ph)/ph>0.0008: bfvg.append((ph,nl))
+            pl2=float(l.iloc[idx-1]); nh=float(h.iloc[idx+1])
+            if pl2>nh and (pl2-nh)/pl2>0.0008: sfvg.append((nh,pl2))
+        for lo,hi in bfvg[:5]:
+            if lo<=cp<=hi:        return "BUY",f"SMC Bullish FVG {round(lo,4)}-{round(hi,4)} — filling imbalance"
+            if cp<lo and cp>=lo*0.997: return "BUY",f"SMC Bullish FVG magnet at {round(lo,4)}"
+        for lo,hi in sfvg[:5]:
+            if lo<=cp<=hi:        return "SELL",f"SMC Bearish FVG {round(lo,4)}-{round(hi,4)} — filling imbalance"
+            if cp>hi and cp<=hi*1.003: return "SELL",f"SMC Bearish FVG magnet at {round(hi,4)}"
+        return "NEUTRAL","No active Fair Value Gaps near price"
+    except: return "NEUTRAL","SMC FVG insufficient data"
+
+def s_sr(df):
+    try:
+        h=df["High"]; l=df["Low"]; c=df["Close"]
+        p=float(c.iloc[-1])
+        res=float(h.rolling(20).max().iloc[-1]); sup=float(l.rolling(20).min().iloc[-1])
+        mid=(res+sup)/2; rng=res-sup; zone=rng*0.10
+        pct=round((p-sup)/rng*100,1) if rng>0 else 50
+        if p>=res-zone: return "SELL",f"At resistance {round(res,4)} ({pct}% of range)"
+        if p<=sup+zone: return "BUY", f"At support {round(sup,4)} ({pct}% of range)"
+        if p>mid+zone:  return "BUY", f"Upper range {pct}% — bullish bias"
+        if p<mid-zone:  return "SELL",f"Lower range {pct}% — bearish bias"
+        return "NEUTRAL",f"Mid-range {pct}%"
+    except: return "NEUTRAL","S/R error"
+
+STRATS={"EMA Trend":(s_ema,"📈","Trend Direction"),
+        "ADX Strength":(s_adx,"💪","Trend Strength Filter"),
+        "RSI + Divergence":(s_rsi,"⚡","Momentum & Divergence"),
+        "SMC Order Blocks":(s_ob,"🏦","Institutional Zones"),
+        "SMC Fair Value Gap":(s_fvg,"🕳️","Price Imbalances"),
+        "Support/Resistance":(s_sr,"🧱","Key Price Levels")}
+
+# ─── SIGNAL GRADE ──────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADDITIONAL REAL SMC / STRUCTURE DETECTORS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def detect_bos_choch(df):
+    """
+    Break of Structure (BOS) = trend continuation (new HH in uptrend / new LL in downtrend)
+    Change of Character (CHOCH) = trend reversal (structure breaks against prevailing trend)
+    """
+    try:
+        h=df["High"]; l=df["Low"]; c=df["Close"]
+        recent_h=h.iloc[-30:]; recent_l=l.iloc[-30:]
+        swings_h=[]; swings_l=[]
+        for i in range(2,len(recent_h)-2):
+            if recent_h.iloc[i]>recent_h.iloc[i-1] and recent_h.iloc[i]>recent_h.iloc[i-2] and \
+               recent_h.iloc[i]>recent_h.iloc[i+1] and recent_h.iloc[i]>recent_h.iloc[i+2]:
+                swings_h.append(float(recent_h.iloc[i]))
+            if recent_l.iloc[i]<recent_l.iloc[i-1] and recent_l.iloc[i]<recent_l.iloc[i-2] and \
+               recent_l.iloc[i]<recent_l.iloc[i+1] and recent_l.iloc[i]<recent_l.iloc[i+2]:
+                swings_l.append(float(recent_l.iloc[i]))
+        cp=float(c.iloc[-1])
+        if len(swings_h)>=2 and len(swings_l)>=2:
+            last_hh=swings_h[-1]; prev_hh=swings_h[-2]
+            last_ll=swings_l[-1]; prev_ll=swings_l[-2]
+            uptrend=last_hh>prev_hh and last_ll>prev_ll
+            downtrend=last_hh<prev_hh and last_ll<prev_ll
+            if uptrend and cp>last_hh:
+                return "BUY","BOS","Break of Structure — new higher high, uptrend continuing"
+            if downtrend and cp<last_ll:
+                return "SELL","BOS","Break of Structure — new lower low, downtrend continuing"
+            if uptrend and cp<last_ll:
+                return "SELL","CHOCH","Change of Character — uptrend broken, reversal warning"
+            if downtrend and cp>last_hh:
+                return "BUY","CHOCH","Change of Character — downtrend broken, reversal warning"
+        return "NEUTRAL","—","No clear BOS/CHOCH structure"
+    except: return "NEUTRAL","—","Structure detection error"
+
+def detect_liquidity_sweep(df):
+    """Price wicks beyond a recent swing high/low then closes back inside — stop hunt."""
+    try:
+        h=df["High"]; l=df["Low"]; c=df["Close"]; o=df["Open"]
+        recent_h=float(h.iloc[-15:-1].max()); recent_l=float(l.iloc[-15:-1].min())
+        last_h=float(h.iloc[-1]); last_l=float(l.iloc[-1]); last_c=float(c.iloc[-1])
+        if last_h>recent_h and last_c<recent_h:
+            return "SELL",f"Liquidity Sweep — wicked above {round(recent_h,4)} then rejected"
+        if last_l<recent_l and last_c>recent_l:
+            return "BUY",f"Liquidity Sweep — wicked below {round(recent_l,4)} then rejected"
+        return "NEUTRAL","No recent liquidity sweep detected"
+    except: return "NEUTRAL","Liquidity sweep error"
+
+def detect_premium_discount(df):
+    """Divides recent range into thirds — discount (buy zone) / premium (sell zone)."""
+    try:
+        h=df["High"]; l=df["Low"]; c=df["Close"]
+        swing_h=float(h.iloc[-30:].max()); swing_l=float(l.iloc[-30:].min())
+        rng=swing_h-swing_l
+        if rng<=0: return "NEUTRAL","No range",50
+        cp=float(c.iloc[-1])
+        pct=(cp-swing_l)/rng*100
+        if pct<=30: return "BUY",f"DISCOUNT zone ({round(pct)}%) — favorable buying area",round(pct)
+        if pct>=70: return "SELL",f"PREMIUM zone ({round(pct)}%) — favorable selling area",round(pct)
+        return "NEUTRAL",f"EQUILIBRIUM zone ({round(pct)}%) — wait for premium/discount",round(pct)
+    except: return "NEUTRAL","Premium/discount error",50
+
+def detect_candle_pattern(df):
+    """Engulfing, Pin Bar, Doji pattern detection."""
+    try:
+        o=df["Open"]; h=df["High"]; l=df["Low"]; c=df["Close"]
+        o1,h1,l1,c1=float(o.iloc[-1]),float(h.iloc[-1]),float(l.iloc[-1]),float(c.iloc[-1])
+        o2,c2=float(o.iloc[-2]),float(c.iloc[-2])
+        body1=abs(c1-o1); range1=h1-l1
+        upper_wick=h1-max(c1,o1); lower_wick=min(c1,o1)-l1
+        if c1>o1 and c2<o2 and c1>o2 and o1<c2:
+            return "BUY","Bullish Engulfing","Strong reversal — buyers overwhelmed sellers"
+        if c1<o1 and c2>o2 and c1<o2 and o1>c2:
+            return "SELL","Bearish Engulfing","Strong reversal — sellers overwhelmed buyers"
+        if range1>0 and lower_wick>body1*2 and upper_wick<body1*0.5:
+            return "BUY","Bullish Pin Bar","Long lower wick — rejection of lower prices"
+        if range1>0 and upper_wick>body1*2 and lower_wick<body1*0.5:
+            return "SELL","Bearish Pin Bar","Long upper wick — rejection of higher prices"
+        if range1>0 and body1/range1<0.1:
+            return "NEUTRAL","Doji","Indecision candle — no clear direction"
+        return "NEUTRAL","No Pattern","No significant candlestick pattern"
+    except: return "NEUTRAL","Error","Pattern detection error"
+
+def calc_currency_strength():
+    """Currency Strength Meter — relative % change of each currency across its pairs."""
+    pairs_map={"EURUSD=X":("EUR","USD"),"GBPUSD=X":("GBP","USD"),"USDJPY=X":("USD","JPY"),
+               "AUDUSD=X":("AUD","USD"),"USDCHF=X":("USD","CHF"),"USDCAD=X":("USD","CAD")}
+    scores={"EUR":[],"USD":[],"GBP":[],"JPY":[],"AUD":[],"CHF":[],"CAD":[]}
+    for sym,(base,quote) in pairs_map.items():
+        df=get_df(sym,"5d","1h")
+        if df is None or len(df)<2: continue
+        try:
+            chg=float((df["Close"].iloc[-1]/df["Close"].iloc[0]-1)*100)
+            scores[base].append(chg); scores[quote].append(-chg)
+        except: continue
+    result={}
+    for cur,vals in scores.items():
+        result[cur]=round(sum(vals)/len(vals),3) if vals else 0.0
+    return dict(sorted(result.items(),key=lambda x:x[1],reverse=True))
+
+def calc_risk_of_ruin(win_rate,avg_rr,risk_pct):
+    """Simplified risk-of-ruin estimate from win rate, R:R and risk per trade."""
+    try:
+        wr=win_rate/100
+        if wr<=0 or wr>=1: return 100.0
+        edge=(wr*avg_rr)-(1-wr)
+        if edge<=0: return 95.0
+        a=((1-wr)/wr)**(100/max(risk_pct,0.5))
+        return min(100.0,round(a*100,1))
+    except: return 50.0
+
+def detect_overtrading(journal):
+    """AI Trading Coach: flags overtrading and revenge trading patterns from journal data."""
+    flags=[]
+    if not journal: return flags
+    df=pd.DataFrame(journal)
+    if "Date" in df.columns:
+        today=str(datetime.date.today())
+        today_trades=df[df["Date"]==today]
+        if len(today_trades)>=5:
+            flags.append(("⚠️ Overtrading","You've logged "+str(len(today_trades))+" trades today. More than 4-5 trades/day often means lower-quality setups are being taken."))
+    # Revenge trading: a loss followed quickly by another trade on the same asset same day
+    if "Result" in df.columns and "Asset" in df.columns and len(df)>=2:
+        recent=df.tail(10)
+        for i in range(1,len(recent)):
+            prev=recent.iloc[i-1]; cur=recent.iloc[i]
+            if prev.get("Result")=="Loss" and cur.get("Asset")==prev.get("Asset") and cur.get("Date")==prev.get("Date"):
+                flags.append(("🔴 Possible Revenge Trading","Re-entered "+str(cur.get("Asset"))+" same day right after a loss. Consider waiting before re-entering the same asset."))
+                break
+    closed=df[df["Result"].isin(["Win","Loss"])] if "Result" in df.columns else pd.DataFrame()
+    if len(closed)>=5:
+        wins=len(closed[closed["Result"]=="Win"]); wr=wins/len(closed)*100
+        if wr<40:
+            flags.append(("📉 Low Win Rate Warning","Your recent win rate is "+str(round(wr,1))+"%. Consider only taking Grade A signals until this improves."))
+    return flags
+
+
+def get_signal_grade(conf, candle_ok, atr_ok, weekly_ok, session_ok, mtf_ok, is_spec):
+    """
+    Grade A: Best setup  — all filters pass, MTF confirmed, specialist pair
+    Grade B: Good setup  — most filters pass, tradeable
+    Grade C: Marginal    — some filters fail, reduce size or skip
+    Grade D: Poor        — multiple filters fail, skip
+    """
+    score=0
+    if conf>=83:     score+=3
+    elif conf>=67:   score+=2
+    else:            score+=1
+    if candle_ok:    score+=2
+    if atr_ok:       score+=1
+    if weekly_ok:    score+=2
+    if session_ok:   score+=2
+    if mtf_ok:       score+=3
+    if is_spec:      score+=1
+    if score>=12:    return "A","grade-a","🏆 Grade A — Highest Quality","Take full position"
+    if score>=9:     return "B","grade-b","⭐ Grade B — Good Setup","Take normal position"
+    if score>=6:     return "C","grade-c","⚠️ Grade C — Marginal","Take 50% position or skip"
+    return "D","grade-c","🚫 Grade D — Poor Quality","Skip this signal"
+
+# ─── WEIGHTED STRATEGY SCORING ─────────────────────────────────────────────────
+def run_strats(sym,period="6mo",asset_name=None):
+    df=get_df(sym,period)
+    if df is None or len(df)<50: return {},0,"ERROR",df
+    spec=SPECIALISTS.get(asset_name,{})
+    best=spec.get("best",[])
+    res={}
+    for name,(fn,ico,desc) in STRATS.items():
+        try: res[name]=fn(df)
+        except: res[name]=("NEUTRAL","Error")
+    bs=0; ss=0; tw=0
+    for name,(sig,_) in res.items():
+        w=2.0 if name in best else 1.0; tw+=w
+        if sig=="BUY": bs+=w
+        if sig=="SELL": ss+=w
+    if bs>ss:
+        conf=round(bs/tw*100)
+        sig="STRONG BUY" if bs/tw>=0.83 else "BUY" if bs/tw>=0.67 else "WAIT"
+    elif ss>bs:
+        conf=round(ss/tw*100)
+        sig="STRONG SELL" if ss/tw>=0.83 else "SELL" if ss/tw>=0.67 else "WAIT"
+    else:
+        conf=50; sig="WAIT"
+    return res,conf,sig,df
+
+def run_mtf(sym,asset_name=None):
+    tfs={}
+    for label,period,interval in [("Daily","6mo","1d"),("4H","60d","4h"),("1H","5d","1h")]:
+        df=get_df(sym,period,interval)
+        if df is None or len(df)<30: tfs[label]=("WAIT",0); continue
+        spec=SPECIALISTS.get(asset_name,{}); best=spec.get("best",[])
+        res={}
+        for name,(fn,_,__) in STRATS.items():
+            try: res[name]=fn(df)
+            except: res[name]=("NEUTRAL","Error")
+        bs=0; ss=0; tw=0
+        for name,(sg,_) in res.items():
+            w=2.0 if name in best else 1.0; tw+=w
+            if sg=="BUY": bs+=w
+            if sg=="SELL": ss+=w
+        if bs>ss and bs/tw>=0.67:   tfs[label]=("BUY",round(bs/tw*100))
+        elif ss>bs and ss/tw>=0.67: tfs[label]=("SELL",round(ss/tw*100))
+        else:                        tfs[label]=("WAIT",50)
+    sigs=[s for s,_ in tfs.values() if s!="WAIT"]
+    bc=sum(1 for s in sigs if s=="BUY"); sc=sum(1 for s in sigs if s=="SELL")
+    if bc==3:   ms="STRONG BUY";  mn="All 3 timeframes aligned ✅"
+    elif bc==2: ms="BUY";         mn="2/3 timeframes agree"
+    elif sc==3: ms="STRONG SELL"; mn="All 3 timeframes aligned ✅"
+    elif sc==2: ms="SELL";        mn="2/3 timeframes agree"
+    else:       ms="WAIT";        mn="Timeframes conflicting"
+    return tfs,ms,mn
+
+# ─── FULL TIMEFRAME SELECTOR (M1 → W1) ─────────────────────────────────────────
+# Yahoo Finance data limits per interval — used to pick safe period for each TF.
+TF_CONFIG={
+    "M1": {"interval":"1m","period":"7d","label":"1 Minute","light":True},
+    "M5": {"interval":"5m","period":"60d","label":"5 Minutes","light":True},
+    "M15":{"interval":"15m","period":"60d","label":"15 Minutes","light":True},
+    "M30":{"interval":"30m","period":"60d","label":"30 Minutes","light":False},
+    "H1": {"interval":"1h","period":"730d","label":"1 Hour","light":False},
+    "H4": {"interval":"4h" if False else "1h","period":"60d","label":"4 Hours","light":False,"resample":"4h"},
+    "D1": {"interval":"1d","period":"2y","label":"Daily","light":False},
+    "W1": {"interval":"1wk","period":"5y","label":"Weekly","light":False},
+}
+
+def resample_to_4h(df):
+    try:
+        agg={"Open":"first","High":"max","Low":"min","Close":"last"}
+        if "Volume" in df.columns: agg["Volume"]="sum"
+        return df.resample("4h").agg(agg).dropna()
+    except: return df
+
+def run_single_timeframe(sym,tf_key,asset_name=None):
+    """
+    Run analysis on ANY single timeframe from M1 to W1.
+    Light timeframes (M1/M5/M15) have limited history, so we use a lighter
+    3-strategy check (EMA, RSI, S/R) instead of the full 6, since SMC/EMA200
+    need more candles than these short timeframes provide.
+    """
+    cfg=TF_CONFIG.get(tf_key)
+    if not cfg: return None,0,"ERROR",None,"Invalid timeframe"
+    df=get_df(sym,cfg["period"],cfg["interval"])
+    if df is None or len(df)<20:
+        return None,0,"NO DATA",None,f"Not enough {cfg['label']} data available"
+    if tf_key=="H4":
+        df=resample_to_4h(df)
+        if len(df)<20: return None,0,"NO DATA",None,"Not enough data to build 4H candles"
+
+    if cfg["light"]:
+        # Reduced strategy set for very short timeframes (not enough candles for EMA200/SMC)
+        res={}
+        try: res["EMA Trend (short)"]=s_ema(df) if len(df)>=200 else ("NEUTRAL","Not enough candles for EMA200 on this TF")
+        except: res["EMA Trend (short)"]=("NEUTRAL","Error")
+        try: res["RSI + Divergence"]=s_rsi(df)
+        except: res["RSI + Divergence"]=("NEUTRAL","Error")
+        try: res["Support/Resistance"]=s_sr(df)
+        except: res["Support/Resistance"]=("NEUTRAL","Error")
+        b=sum(1 for s,_ in res.values() if s=="BUY"); s=sum(1 for s,_ in res.values() if s=="SELL")
+        t=len(res)
+        if b>s and b>=2:   conf=round(b/t*100); sig="BUY"
+        elif s>b and s>=2: conf=round(s/t*100); sig="SELL"
+        else: conf=50; sig="WAIT"
+        note=f"⚠️ {cfg['label']} has limited history — using lighter 3-strategy check (EMA200/SMC need more candles)"
+    else:
+        res={}
+        for name,(fn,ico,desc) in STRATS.items():
+            try: res[name]=fn(df)
+            except: res[name]=("NEUTRAL","Error")
+        b=sum(1 for s,_ in res.values() if s=="BUY"); s=sum(1 for s,_ in res.values() if s=="SELL")
+        t=len(res)
+        if b>s and b/t>=0.67:   conf=round(b/t*100); sig="STRONG BUY" if b/t>=0.83 else "BUY"
+        elif s>b and s/t>=0.67: conf=round(s/t*100); sig="STRONG SELL" if s/t>=0.83 else "SELL"
+        else: conf=50; sig="WAIT"
+        note=f"Full 6-strategy analysis on {cfg['label']}"
+    return res,conf,sig,df,note
+
+def get_setup(sym,direction):
+    try:
+        df=get_df(sym,"3mo"); c=df["Close"]; h=df["High"]; l=df["Low"]; p=float(c.iloc[-1])
+        tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
+        atr=float(tr.rolling(14).mean().iloc[-1]); risk=atr*1.5
+        if "BUY" in direction: return p,p-risk,p+risk,p+risk*2,p+risk*3,atr
+        else:                  return p,p+risk,p-risk,p-risk*2,p-risk*3,atr
+    except: return None,None,None,None,None,None
+
+def get_position_size(balance,risk_pct,sl,entry,is_forex=True):
+    """Auto position sizing based on signal grade and ATR."""
+    try:
+        risk_amt=balance*risk_pct/100
+        sl_distance=abs(entry-sl)
+        if is_forex: pip_value=10; pips=sl_distance*10000; lot=round(risk_amt/(pips*pip_value)*100)/100
+        else: lot=round(risk_amt/sl_distance,4)
+        return round(lot,2)
+    except: return 0.01
+
+def get_fibs(sym):
+    try:
+        df=get_df(sym,"3mo")
+        hi=float(df["High"].iloc[-20:].max()); lo=float(df["Low"].iloc[-20:].min()); d=hi-lo
+        return {"0.786":hi-d*0.214,"0.618":hi-d*0.382,"0.5":hi-d*0.5,
+                "0.382":hi-d*0.618,"0.236":hi-d*0.764}
+    except: return {}
+
+def get_pivots(sym):
+    try:
+        df=get_df(sym,"5d"); prev=df.iloc[-2]
+        hi=float(prev["High"]); lo=float(prev["Low"]); cl=float(prev["Close"])
+        pp=(hi+lo+cl)/3
+        return {"R2":pp+(hi-lo),"R1":2*pp-lo,"PP":pp,"S1":2*pp-hi,"S2":pp-(hi-lo)}
+    except: return {}
+
+def auto_ticket(asset,sig,conf,entry,sl,tp1,tp2,tp3,grade,src="Auto"):
+    today=str(datetime.date.today())
+    dup=[t for t in st.session_state.journal
+         if t.get("Asset")==asset and t.get("Date")==today and t.get("Signal")==sig]
+    if dup: return False
+    st.session_state.journal.append({
+        "Date":today,"Time":datetime.datetime.now().strftime("%H:%M"),
+        "Asset":asset,"Signal":sig,"Grade":grade,"Entry":round(entry,5),"SL":round(sl,5),
+        "TP1":round(tp1,5),"TP2":round(tp2,5),"TP3":round(tp3,5),
+        "Confidence":conf,"Result":"Open","Source":src})
+    st.session_state.sig_history.append({
+        "DateTime":datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "Asset":asset,"Signal":sig,"Grade":grade,"Confidence":conf,
+        "Entry":round(entry,5),"Result":"Pending"})
+    return True
+
+# ─── CORRELATION CHECK ──────────────────────────────────────────────────────────
+def check_correlations(active_signals):
+    warnings=[]
+    for group,msg in CORRELATIONS:
+        active_in_group=[a for a in active_signals if a in group]
+        if len(active_in_group)>=2:
+            warnings.append(f"⚠️ Correlation: {' + '.join(active_in_group)} — {msg}. Trading both doubles your risk.")
+    return warnings
+
+# ─── SIGNAL BANNER ─────────────────────────────────────────────────────────────
+def banner(sig,asset,conf,grade=None):
+    spec=SPECIALISTS.get(asset,{})
+    sc=spec.get("color","")
+    g_tag=f"&nbsp;<span class='grade-{grade.lower()}' style='font-size:13px'>{grade}</span>" if grade else ""
+    if sig=="STRONG BUY":
+        st.markdown(f"""<div style='background:linear-gradient(135deg,#0d5c2e,#1a7a3e);
+        border:2px solid #3fb950;border-radius:14px;padding:20px;text-align:center;
+        margin-bottom:12px;box-shadow:0 0 20px rgba(63,185,80,0.4)'>
+        <div style='font-size:24px;font-weight:900;color:#3fb950'>🚀 STRONG BUY — BUY NOW{g_tag}</div>
+        <div style='font-size:15px;color:#e6edf3;margin-top:5px'>{asset} &nbsp;|&nbsp; {conf}% confidence</div>
+        </div>""",unsafe_allow_html=True)
+    elif sig=="BUY":
+        st.markdown(f"""<div style='background:#0d2b1a;border:2px solid #3fb950;
+        border-radius:14px;padding:16px;text-align:center;margin-bottom:12px'>
+        <div style='font-size:20px;font-weight:800;color:#3fb950'>🟢 BUY SIGNAL{g_tag}</div>
+        <div style='font-size:14px;color:#e6edf3;margin-top:4px'>{asset} &nbsp;|&nbsp; {conf}% confidence</div>
+        </div>""",unsafe_allow_html=True)
+    elif sig=="STRONG SELL":
+        st.markdown(f"""<div style='background:linear-gradient(135deg,#5c0d0d,#7a1a1a);
+        border:2px solid #f85149;border-radius:14px;padding:20px;text-align:center;
+        margin-bottom:12px;box-shadow:0 0 20px rgba(248,81,73,0.4)'>
+        <div style='font-size:24px;font-weight:900;color:#f85149'>📉 STRONG SELL — SELL NOW{g_tag}</div>
+        <div style='font-size:15px;color:#e6edf3;margin-top:5px'>{asset} &nbsp;|&nbsp; {conf}% confidence</div>
+        </div>""",unsafe_allow_html=True)
+    elif sig=="SELL":
+        st.markdown(f"""<div style='background:#2b0d0d;border:2px solid #f85149;
+        border-radius:14px;padding:16px;text-align:center;margin-bottom:12px'>
+        <div style='font-size:20px;font-weight:800;color:#f85149'>🔴 SELL SIGNAL{g_tag}</div>
+        <div style='font-size:14px;color:#e6edf3;margin-top:4px'>{asset} &nbsp;|&nbsp; {conf}% confidence</div>
+        </div>""",unsafe_allow_html=True)
+    else:
+        st.markdown(f"""<div style='background:#161b22;border:1px solid #30363d;
+        border-radius:14px;padding:14px;text-align:center;margin-bottom:12px'>
+        <div style='font-size:17px;color:#8b949e'>⏳ WAIT — {asset} — strategies not aligned</div>
+        </div>""",unsafe_allow_html=True)
+
+# ─── CHART ─────────────────────────────────────────────────────────────────────
+def chart(sym,name,sig,entry,sl,tp1,tp2,ckey="chart",asset_name=None):
+    df=get_df(sym,"3mo","1d")
+    if df is None: st.warning("Chart unavailable"); return
+    cl=df["Close"]; e20=cl.ewm(20).mean(); e50=cl.ewm(50).mean(); e200=cl.ewm(200).mean()
+    res=float(df["High"].rolling(20).max().iloc[-1]); sup=float(df["Low"].rolling(20).min().iloc[-1])
+    dates=df.index; fig=go.Figure()
+    if "Open" in df.columns:
+        fig.add_trace(go.Candlestick(x=dates,open=df["Open"],high=df["High"],
+            low=df["Low"],close=cl,name="Price",
+            increasing_line_color="#3fb950",decreasing_line_color="#f85149"))
+    else:
+        fig.add_trace(go.Scatter(x=dates,y=cl,name="Price",line=dict(color="#58a6ff",width=2)))
+    fig.add_trace(go.Scatter(x=dates,y=e20,name="EMA20",line=dict(color="#ffd700",width=1,dash="dot")))
+    fig.add_trace(go.Scatter(x=dates,y=e50,name="EMA50",line=dict(color="#ff7f50",width=1,dash="dot")))
+    e200c="#ffd200" if asset_name=="Gold (XAU/USD)" else "#da70d6"
+    e200w=2 if asset_name=="Gold (XAU/USD)" else 1
+    fig.add_trace(go.Scatter(x=dates,y=e200,name="EMA200",line=dict(color=e200c,width=e200w,dash="dash")))
+    fig.add_hline(y=res,line_color="#f85149",line_dash="dash",
+        annotation_text=f"Res {round(res,4)}",annotation_position="right",annotation_font_size=9)
+    fig.add_hline(y=sup,line_color="#3fb950",line_dash="dash",
+        annotation_text=f"Sup {round(sup,4)}",annotation_position="right",annotation_font_size=9)
+    if entry:
+        ec="#3fb950" if "BUY" in sig else "#f85149"
+        fig.add_hline(y=entry,line_color=ec,line_width=2,
+            annotation_text=f"Entry {round(entry,4)}",annotation_position="left",annotation_font_size=9)
+        fig.add_hline(y=sl,line_color="#f85149",line_dash="dash",
+            annotation_text=f"SL {round(sl,4)}",annotation_position="left",annotation_font_size=9)
+        fig.add_hline(y=tp1,line_color="#3fb950",line_dash="dash",
+            annotation_text=f"TP1 {round(tp1,4)}",annotation_position="left",annotation_font_size=9)
+        fig.add_hline(y=tp2,line_color="#3fb950",line_dash="dot",
+            annotation_text=f"TP2 {round(tp2,4)}",annotation_position="left",annotation_font_size=9)
+    fc={"0.382":"#9b59b6","0.5":"#3498db","0.618":"#e67e22","0.786":"#e74c3c"}
+    for lv,pr in get_fibs(sym).items():
+        fig.add_hline(y=pr,line_color=fc.get(lv,"#888"),line_width=1,line_dash="dot",
+            annotation_text=f"Fib {lv}",annotation_position="right",annotation_font_size=8)
+    pc={"PP":"#ffffff","R1":"#ff6b6b","R2":"#ff4444","S1":"#51cf66","S2":"#37b24d"}
+    for lv,pr in get_pivots(sym).items():
+        fig.add_hline(y=pr,line_color=pc.get(lv,"#888"),line_width=1,line_dash="longdash",
+            annotation_text=lv,annotation_position="left",annotation_font_size=8)
+    lp=float(cl.iloc[-1])
+    fig.add_trace(go.Scatter(x=[dates[-1]],y=[lp],mode="markers",
+        marker=dict(symbol="triangle-up" if "BUY" in sig else "triangle-down",
+                    size=13,color="#3fb950" if "BUY" in sig else "#f85149"),name="Signal"))
+    spec=SPECIALISTS.get(asset_name,{})
+    tc=spec.get("color","#e6edf3")
+    fig.update_layout(title=dict(text=name,font=dict(color=tc)),
+        plot_bgcolor="#0d1117",paper_bgcolor="#0d1117",font=dict(color="#e6edf3"),height=430,
+        xaxis=dict(gridcolor="#21262d",rangeslider_visible=False),yaxis=dict(gridcolor="#21262d"),
+        legend=dict(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1,font_size=9),
+        margin=dict(l=50,r=120,t=40,b=30))
+    st.plotly_chart(fig,use_container_width=True,key=ckey)
+
+# ─── NEWS ──────────────────────────────────────────────────────────────────────
+def get_news():
+    try:
+        r=requests.get("https://nfs.faireconomy.media/ff_calendar_thisweek.json",timeout=8)
+        if r.status_code==200:
+            return pd.DataFrame([{"Time":e.get("date","")[:16].replace("T"," "),
+                "Currency":e.get("currency",""),"Event":e.get("title",""),
+                "Impact":e.get("impact",""),"Forecast":e.get("forecast","—"),
+                "Previous":e.get("previous","—")} for e in r.json()[:30]])
+    except: pass
+    return pd.DataFrame([
+        {"Time":"Today 08:30","Currency":"USD","Event":"Non-Farm Payrolls","Impact":"High","Forecast":"180K","Previous":"175K"},
+        {"Time":"Today 10:00","Currency":"EUR","Event":"ECB Rate Decision","Impact":"High","Forecast":"4.5%","Previous":"4.5%"},
+        {"Time":"Today 13:30","Currency":"GBP","Event":"CPI y/y","Impact":"Medium","Forecast":"3.1%","Previous":"3.4%"},
+        {"Time":"Tomorrow","Currency":"USD","Event":"FOMC Minutes","Impact":"High","Forecast":"—","Previous":"—"},
+    ])
+NP={"USD":["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CHF","USD/CAD","Gold (XAU/USD)"],
+    "EUR":["EUR/USD"],"GBP":["GBP/USD"],"JPY":["USD/JPY"],
+    "AUD":["AUD/USD"],"CHF":["USD/CHF"],"CAD":["USD/CAD"],
+    "XAU":["Gold (XAU/USD)"],"BTC":["Bitcoin"]}
+
+def ai_call(prompt,max_tokens=500):
+    if not AI_KEY: return "Add ANTHROPIC_API_KEY in Streamlit secrets to enable AI."
+    try:
+        r=requests.post("https://api.anthropic.com/v1/messages",
+            headers={"Content-Type":"application/json","x-api-key":AI_KEY,"anthropic-version":"2023-06-01"},
+            json={"model":"claude-sonnet-4-6","max_tokens":max_tokens,
+                  "messages":[{"role":"user","content":prompt}]},timeout=25)
+        if r.status_code==200: return r.json()["content"][0]["text"]
+        return f"AI error {r.status_code}"
+    except Exception as e: return f"Error: {e}"
+
+# ─── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### <span class='pulse-dot'></span> Platform Engine Matrix", unsafe_allow_html=True)
-    st.caption(f"Operator: `{st.session_state.email}` | Account: **{st.session_state.account_type.upper()}**")
-    
-    # 🌟 NEW FEATURE: Logout Engine (Saves profile identity on execution)
-    if st.button("🔒 Terminate Matrix Connection (Logout)", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.account_type = None
-        st.session_state.email = ""
-        st.query_params.clear()
+    st.markdown("""<div style='text-align:center;font-size:22px;font-weight:900;
+    background:linear-gradient(90deg,#00c6ff,#0072ff);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px'>
+    🚀 Sparro FX AI</div>""",unsafe_allow_html=True)
+    st.markdown("""<div style='display:flex;gap:6px;justify-content:center;margin-bottom:10px'>
+    <span style='background:#2a2000;border:1px solid #ffd200;border-radius:8px;padding:3px 7px;font-size:12px'>🥇 Gold</span>
+    <span style='background:#2a1500;border:1px solid #f7931a;border-radius:8px;padding:3px 7px;font-size:12px'>₿ BTC</span>
+    <span style='background:#000033;border:1px solid #4488ff;border-radius:8px;padding:3px 7px;font-size:12px'>€ EUR</span>
+    </div>""",unsafe_allow_html=True)
+    st.divider()
+    if atype=="admin":     st.success("👑 Admin")
+    elif atype=="premium": st.success("⚡ Premium Active")
+    elif atype=="trial":
+        h=hours_left(); st.warning(f"🎁 Trial — {h}h left")
+        if h<=12: st.error("⏰ Upgrade now!")
+    else:
+        st.info("🆓 Free Plan")
+        if st.button("⚡ Upgrade $15/mo",use_container_width=True,key="upg"):
+            st.info("Contact us for your premium password.")
+    if st.session_state.email: st.caption(f"👤 {st.session_state.email}")
+    st.divider()
+    nav=[("🏠 Dashboard","Dashboard"),("🕐 Timeframes","Timeframes"),
+         ("🎫 Tickets","Tickets"),("📓 Journal","Journal"),
+         ("📈 Performance","Performance"),("💰 Risk Calc","Risk")]
+    for lbl,key in nav:
+        active=st.session_state.page==key
+        if st.button(lbl,use_container_width=True,
+                     type="primary" if active else "secondary",key=f"p_{key}"):
+            st.session_state.page=key; st.rerun()
+    with st.expander("≫ More"):
+        more=[("💪 Currency Strength","Strength"),("🧘 AI Coach","Coach"),
+              ("📷 Chart Analyzer","ChartAI"),("🛡️ Prop Firm Tools","PropFirm"),
+              ("💎 Pricing","Pricing"),("📚 Learn","Learn"),("ℹ️ About","About")]
+        if atype=="admin": more.append(("👑 Admin","Admin"))
+        for lbl,key in more:
+            if st.button(lbl,use_container_width=True,key=f"p_{key}"):
+                st.session_state.page=key; st.rerun()
+    st.divider()
+    if st.button("🚪 Logout",use_container_width=True,key="logout"):
+        clear_session()
+        for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
-        
-    st.divider()
-    
-    # ROADMAP CHANNELS 5, 12, 13, 15: Embedded Technical Watch Utilities
-    with st.expander("🛠️ Advanced Market Monitors", expanded=False):
-        st.markdown("**[5] Session Detector Engine**")
-        now_hour = datetime.datetime.now().hour
-        if 8 <= now_hour < 16: st.success("💻 London Liquidity Block: ACTIVE")
-        elif 13 <= now_hour < 21: st.success("🏙️ New York Order Block: ACTIVE")
-        else: st.info("🌏 Asian Range Accumulation: ACTIVE")
-        
-        st.markdown("**[13] DXY Dollar Matrix Index**")
-        dxy_data = get_df("DX-Y.NYB", period="5d")
-        if dxy_data is not None:
-            dxy_val = round(float(dxy_data["Close"].iloc[-1]), 2)
-            dxy_delta = round(float(dxy_data["Close"].iloc[-1] - dxy_data["Close"].iloc[-2]), 2)
-            st.metric("DXY Index Core", f"{dxy_val} USD", f"{dxy_delta}")
-            
-    with st.expander("🧮 Structural Account Calculators", expanded=False):
-        st.markdown("**[9 & 10] Position Sizing Suite**")
-        acct_size = st.number_input("Account Balance ($)", value=1000, step=100)
-        risk_pct = st.slider("Risk Parameters (%)", 0.5, 5.0, 1.0, 0.5)
-        stop_pips = st.number_input("Stop Loss Distance (Pips)", value=15, step=1)
-        if st.button("Run Lot Allocation Model"):
-            amt_risk = acct_size * (risk_pct / 100)
-            lot_sz = round(amt_risk / (stop_pips * 10), 2)
-            st.markdown(f"↳ **Risk Amount:** `${amt_risk:.2f}` | **Lot Size:** `{lot_sz}` Lots")
-            
-        st.markdown("**[11] Partial TP Execution Model**")
-        base_lots = st.number_input("Open Execution Lots", value=1.0, step=0.1)
-        if st.button("Calculate Partial Scale-Out Fractions"):
-            st.caption(f"TP1 Scale (50%): {round(base_lots*0.5, 2)} | TP2 Scale (30%): {round(base_lots*0.3, 2)}")
-            
-    with st.expander("🤖 External Node Webhooks", expanded=False):
-        st.markdown("**[15] Semi-Automatic MT5 Integration**")
-        st.text_input("MT5 Terminal Socket Server URL", value="http://localhost:8080/webhook")
-        st.checkbox("Auto-Sync Generated Orders directly to MT5 API Network")
-        
-    st.divider()
-    navs = [("📊 Dashboard Mainframe", "Dashboard"), ("🏫 Academy Core", "Academy"), ("📓 Historical Ledger Logs", "Journal")]
-    for lbl, k in navs:
-        if st.button(lbl, use_container_width=True, type="primary" if st.session_state.page == k else "secondary"):
-            st.session_state.page = k; st.rerun()
 
-# ─── VIEW ROUTER ──────────────────────────────────────────────────────────────
-pg = st.session_state.page
+pg=st.session_state.page
 
-if pg == "Dashboard":
-    # 📱 PIPNEX SNAPSHOT UI DESIGN
-    st.markdown("""
-    <div class='pipnex-snapshot'>
-        <div style='font-size:18px; font-weight:800; color:#ffffff; margin-bottom:15px;'>📊 Quick Performance Snapshot</div>
-        <div style='display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:15px;'>
-            <div>
-                <div class='pipnex-metric-label'>AI Analyses Today</div>
-                <div class='pipnex-metric-value' style='color:#c084fc;'>1,482</div>
-            </div>
-            <div>
-                <div class='pipnex-metric-label'>Signals Generated</div>
-                <div class='pipnex-metric-value' style='color:#3fb950;'>14 Live</div>
-            </div>
-            <div>
-                <div class='pipnex-metric-label'>AI Confidence (Avg)</div>
-                <div class='pipnex-metric-value'>91.4%</div>
-            </div>
-            <div>
-                <div class='pipnex-metric-label'>Auto-Trading Socket</div>
-                <div class='tag-purple' style='display:inline-block; margin-top:4px;'>ONLINE FRAME</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    t1, t2, t3 = st.tabs(["⚡ Market Pulse Matrix", "🔬 Deep Diagnostic Flow", "📅 NewsIQ Macro Radar"])
-    
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD
+# ══════════════════════════════════════════════════════════════════════════════
+if pg=="Dashboard":
+    now=datetime.datetime.utcnow().strftime("%A %d %b %Y  •  %H:%M UTC")
+    st.markdown(f"""<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:14px'>
+    <div style='font-size:22px;font-weight:900'>📊 Sparro FX AI</div>
+    <div style='color:#8b949e;font-size:12px'>🕐 {now}</div>
+    </div>""",unsafe_allow_html=True)
+    if not pro: st.warning("🔒 Free plan — Gold, BTC, EUR/USD + 2 pairs. Upgrade for all 10.")
+
+    if pro:
+        with st.expander("📰 Daily Market Briefing + Risk Warning",expanded=False):
+            ndf=get_news()
+            hi_ev=ndf[ndf["Impact"]=="High"] if "Impact" in ndf.columns else pd.DataFrame()
+            if not hi_ev.empty:
+                ev_str=" · ".join([f"{r.get('Time','')} {r.get('Currency','')} {r.get('Event','')}"
+                                   for _,r in hi_ev.head(3).iterrows()])
+                st.error(f"⚠️ HIGH IMPACT NEWS: {ev_str} — reduce position sizes today")
+            with st.spinner("Generating briefing..."):
+                brief=ai_call(f"3-sentence market briefing focusing on Gold, Bitcoin, EUR/USD. Events: {ndf.to_string(index=False) if len(ndf)>0 else 'none'}. Be direct.",350)
+            st.markdown(f"""<div style='background:#161b22;border-radius:10px;padding:14px;
+            border-left:4px solid #00c6ff;font-size:14px;line-height:1.8'>
+            {brief.replace(chr(10),"<br>")}</div>""",unsafe_allow_html=True)
+
+    t1,t2,t3,t4,t5=st.tabs(["⚡ Pulse","📊 Scanner","🏆 Trade of Day","🔬 Deep Analysis","🗞️ News Trading"])
+
+    # ── PULSE ──────────────────────────────────────────────────────────────────
     with t1:
-        st.markdown("#### [2] Multi-Timeframe Structural Grid Scanners")
-        with st.spinner("Compiling structural algorithmic arrays..."):
-            for name, spec_data in pairs.items():
-                df_asset = get_df(spec_data["sym"], "3mo")
-                bos_s, _, choch_s, _ = run_structural_scanners(df_asset)
-                col1, col2, col3, col4 = st.columns([1.2, 1, 1, 1])
-                with col1: st.markdown(f"**{spec_data['icon']} {name} Core Window**")
-                with col2: st.markdown(f"M15 Structural Framework: `BULLISH CONTINUATION`" if "BULL" in bos_s else f"M15 Structure: `CONSOLIDATION`")
-                with col3: st.markdown(f"H1 Engine Bias: `BEARISH HUNT`" if "BEAR" in choch_s else f"H1 Engine Bias: `RANGE EQUILIBRIUM`")
-                with col4: 
-                    if st.button("Pull Into Core Viewport", key=f"pull_{name}"):
-                        st.session_state["active_pair_selection"] = name
-        st.divider()
-        
-        # [1] Trade of the Day Module
-        st.markdown("#### [1] Quantitative High-Confidence Trade of the Day")
-        st.markdown("""<div class='card' style='border-left:5px solid #a855f7;'>
-            <span class='tag-purple'>GOLD / XAUUSD CONFLUENCE MATRIX MATCH</span>
-            <h3 style='margin-top:8px;'>🎯 Scale Execution Order - Bullish Order Block Sweep Target</h3>
-            <p style='color:#9ca3af; font-size:13px;'>The algorithm has flagged massive resting buy side orders under recent structural consolidation levels matching macro multi-timeframe confirmation rules.</p>
-        </div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='display:flex;align-items:center;margin-bottom:6px'>
+        <span class='pulse-dot'></span>
+        <span style='font-size:19px;font-weight:800'>Live Pulse Signal</span></div>
+        <div style='color:#8b949e;font-size:13px;margin-bottom:14px'>
+        Quality-filtered signals. Candle quality · ATR filter · Weekly trend · Session timing · MTF confirmation.
+        Grade A/B signals aim for 70%+ win rate.</div>""",unsafe_allow_html=True)
 
+        if not pro: st.error("🔒 Upgrade to access Pulse Signals.")
+        else:
+            rc,rb=st.columns([3,1])
+            with rb:
+                if st.button("🔄 Refresh",use_container_width=True,key="pulse_ref"): st.rerun()
+            with rc: st.caption(f"Scan: {datetime.datetime.now().strftime('%H:%M:%S')}")
+
+            with st.spinner("Scanning and applying quality filters..."):
+                hits=[]; active_assets=[]
+                for name,sym in ALL_PAIRS.items():
+                    res,conf,sig,df_raw=run_strats(sym,asset_name=name)
+                    if sig=="WAIT" or conf<67 or df_raw is None: continue
+                    entry,sl,tp1,tp2,tp3,atr=get_setup(sym,sig)
+                    if not entry: continue
+                    # Quality filters
+                    candle_ok,candle_msg=check_candle_quality(df_raw)
+                    atr_ok,atr_msg=check_atr_filter(df_raw)
+                    weekly_ok,weekly_msg,weekly_aligned=check_weekly_trend(sym,sig)
+                    session_ok,session_msg=get_session_status(name)
+                    tf_res,mtf_sig,mtf_note=run_mtf(sym,asset_name=name)
+                    mtf_ok=(("BUY" in mtf_sig and "BUY" in sig) or ("SELL" in mtf_sig and "SELL" in sig))
+                    cond,cond_icon,cond_color,cond_msg=get_market_condition(df_raw)
+                    grade,grade_cls,grade_label,grade_action=get_signal_grade(
+                        conf,candle_ok,atr_ok,weekly_aligned,session_ok,mtf_ok,name in SPECIALISTS)
+                    # Only show Grade A, B, C — skip D
+                    if grade=="D": continue
+                    active_assets.append(name)
+                    hits.append({"name":name,"sym":sym,"sig":sig,"conf":conf,
+                        "entry":entry,"sl":sl,"tp1":tp1,"tp2":tp2,"tp3":tp3,"atr":atr,
+                        "res":res,"tf":tf_res,"mtf_sig":mtf_sig,"mtf_note":mtf_note,"mtf_ok":mtf_ok,
+                        "grade":grade,"grade_cls":grade_cls,"grade_label":grade_label,"grade_action":grade_action,
+                        "candle_ok":candle_ok,"candle_msg":candle_msg,
+                        "atr_ok":atr_ok,"atr_msg":atr_msg,
+                        "weekly_ok":weekly_ok,"weekly_msg":weekly_msg,
+                        "session_ok":session_ok,"session_msg":session_msg,
+                        "cond":cond,"cond_icon":cond_icon,"cond_color":cond_color,"cond_msg":cond_msg,
+                        "is_spec":name in SPECIALISTS})
+                hits.sort(key=lambda x:(x["is_spec"],x["grade"]=="A",x["grade"]=="B",x["conf"]),reverse=True)
+                # Correlation check
+                corr_warnings=check_correlations(active_assets)
+
+            if hits: play_sound(hits[0]["sig"])
+
+            # Correlation warnings
+            for w in corr_warnings:
+                st.warning(w)
+
+            if not hits:
+                st.markdown("""<div style='background:#161b22;border:1px solid #30363d;
+                border-radius:14px;padding:40px;text-align:center'>
+                <div style='font-size:36px'>😴</div>
+                <div style='font-size:17px;color:#8b949e;margin-top:10px'>No quality signals right now</div>
+                <div style='color:#8b949e;font-size:13px;margin-top:6px'>
+                Waiting for signals that pass all quality filters.<br>
+                Grade D signals are automatically excluded.</div>
+                </div>""",unsafe_allow_html=True)
+            else:
+                grade_counts={"A":sum(1 for h in hits if h["grade"]=="A"),
+                              "B":sum(1 for h in hits if h["grade"]=="B"),
+                              "C":sum(1 for h in hits if h["grade"]=="C")}
+                st.markdown(f"""<div style='background:#161b22;border-radius:10px;padding:10px 14px;
+                margin-bottom:12px;display:flex;gap:16px;align-items:center'>
+                <span style='color:#8b949e;font-size:13px'>{len(hits)} signal(s):</span>
+                {"<span class='grade-a'>A x"+str(grade_counts["A"])+"</span>" if grade_counts["A"] else ""}
+                {"<span class='grade-b'>B x"+str(grade_counts["B"])+"</span>" if grade_counts["B"] else ""}
+                {"<span class='grade-c'>C x"+str(grade_counts["C"])+"</span>" if grade_counts["C"] else ""}
+                <span style='color:#8b949e;font-size:12px;margin-left:auto'>Specialists shown first</span>
+                </div>""",unsafe_allow_html=True)
+
+                for idx,p in enumerate(hits):
+                    ib="BUY" in p["sig"]
+                    brd="#3fb950" if ib else "#f85149"
+                    bg="linear-gradient(135deg,#0d3b20,#0d1f14)" if ib else "linear-gradient(135deg,#3b0d0d,#1f0d0d)"
+                    icon="🚀" if ib else "📉"
+                    cfc="#3fb950" if p["conf"]>=83 else "#ffd700" if p["conf"]>=67 else "#f85149"
+                    dr="BUY" if ib else "SELL"
+                    agr=[n for n,(s,_) in p["res"].items() if s==dr]
+                    smc_on=any("SMC" in n for n in agr)
+                    mtf_col="#3fb950" if p["mtf_ok"] else "#ffd700"
+                    spec=SPECIALISTS.get(p["name"],{})
+                    spec_col=spec.get("color","")
+                    spec_icon=spec.get("icon","")
+
+                    tf_html="".join([
+                        f"<div style='background:#00000044;border-radius:6px;padding:5px 3px;"
+                        f"text-align:center;color:{'#3fb950' if s=='BUY' else '#f85149' if s=='SELL' else '#8b949e'};"
+                        f"font-size:11px'>{tf}<br><b>{s}</b></div>"
+                        for tf,(s,_) in p["tf"].items()])
+
+                    # Quality filter status row
+                    filters=[
+                        ("🕯️",p["candle_ok"],"Candle"),("📊",p["atr_ok"],"Volatility"),
+                        ("📅",p["weekly_ok"],"Weekly"),("🕐",p["session_ok"],"Session"),
+                        ("🕐",p["mtf_ok"],"MTF")]
+                    filter_html="".join([
+                        f"<div style='text-align:center;font-size:10px;color:{'#3fb950' if ok else '#f85149'}'>"
+                        f"{ico}<br>{lbl}<br>{'✅' if ok else '❌'}</div>"
+                        for ico,ok,lbl in filters])
+
+                    spec_border=f"border-top:3px solid {spec_col};" if spec else ""
+                    spec_tag=f"{spec_icon} " if spec else ""
+
+                    st.markdown(f"""<div style='background:{bg};border:2px solid {brd};
+                    {spec_border}border-radius:14px;padding:16px;margin-bottom:12px;
+                    box-shadow:0 0 14px {brd}33'>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:10px'>
+                      <div>
+                        <div style='font-size:18px;font-weight:900;color:{brd}'>{spec_tag}{icon} {p["sig"]}
+                          &nbsp;<span class='{p["grade_cls"]}' style='font-size:13px'>{p["grade"]}</span>
+                          {"&nbsp;<span class='smc-badge'>SMC</span>" if smc_on else ""}
+                        </div>
+                        <div style='font-size:19px;font-weight:700;color:#e6edf3'>{p["name"]}</div>
+                        <div style='font-size:11px;color:{mtf_col};margin-top:3px'>MTF: {p["mtf_sig"]} — {p["mtf_note"]}</div>
+                        <div style='font-size:11px;color:{p["cond_color"]};margin-top:2px'>{p["cond_icon"]} {p["cond"]} market — {p["cond_msg"]}</div>
+                      </div>
+                      <div style='text-align:right'>
+                        <div style='font-size:28px;font-weight:900;color:{cfc}'>{p["conf"]}%</div>
+                        <div style='font-size:10px;color:#8b949e'>{len(agr)}/6 agree</div>
+                        <div style='font-size:11px;color:#8b949e;margin-top:4px'>{p["grade_action"]}</div>
+                      </div>
+                    </div>
+                    <div style='display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:8px'>
+                      <div style='background:#00000044;border-radius:6px;padding:7px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>ENTRY</div>
+                        <div style='font-size:11px;font-weight:700;color:#e6edf3'>{round(p["entry"],4)}</div>
+                      </div>
+                      <div style='background:#00000044;border-radius:6px;padding:7px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>STOP</div>
+                        <div style='font-size:11px;font-weight:700;color:#f85149'>{round(p["sl"],4)}</div>
+                      </div>
+                      <div style='background:#00000044;border-radius:6px;padding:7px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>TP1</div>
+                        <div style='font-size:11px;font-weight:700;color:#3fb950'>{round(p["tp1"],4)}</div>
+                      </div>
+                      <div style='background:#00000044;border-radius:6px;padding:7px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>TP2</div>
+                        <div style='font-size:11px;font-weight:700;color:#3fb950'>{round(p["tp2"],4)}</div>
+                      </div>
+                      <div style='background:#00000044;border-radius:6px;padding:7px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>TP3</div>
+                        <div style='font-size:11px;font-weight:700;color:#3fb950'>{round(p["tp3"],4)}</div>
+                      </div>
+                    </div>
+                    <div style='display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:8px'>
+                      {filter_html}
+                    </div>
+                    <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px'>
+                      {tf_html}
+                    </div>
+                    <div style='font-size:11px;color:#8b949e'>✅ {" · ".join(agr)}</div>
+                    </div>""",unsafe_allow_html=True)
+
+                    ca,cb=st.columns(2)
+                    with ca:
+                        if st.button(f"🎫 Auto Ticket",key=f"atk_{idx}",use_container_width=True):
+                            ok=auto_ticket(p["name"],p["sig"],p["conf"],p["entry"],
+                                          p["sl"],p["tp1"],p["tp2"],p["tp3"],p["grade"],"Pulse")
+                            st.success("✅ Ticket created! Go to Tickets.") if ok else st.warning("Already ticketed today.")
+                    with cb:
+                        with st.expander(f"📊 {p['name']}"):
+                            # Quality filter detail
+                            st.markdown(f"**Candle:** {p['candle_msg']}")
+                            st.markdown(f"**Volatility:** {p['atr_msg']}")
+                            st.markdown(f"**Weekly:** {p['weekly_msg']}")
+                            st.markdown(f"**Session:** {p['session_msg']}")
+                            chart(p["sym"],p["name"],p["sig"],p["entry"],p["sl"],
+                                  p["tp1"],p["tp2"],ckey=f"pc_{idx}",asset_name=p["name"])
+
+    # ── SCANNER ────────────────────────────────────────────────────────────────
     with t2:
-        sel_asset = st.selectbox("Active Asset Allocation Core Focus", list(pairs.keys()), key="active_pair_sel")
-        sym_code = pairs[sel_asset]["sym"]
-        df_target = get_df(sym_code, "6mo")
-        
-        # [3 & 4] Run Custom Algorithms
-        bos_status, bos_note, choch_status, choch_note = run_structural_scanners(df_target)
-        
-        col_l, col_r = st.columns(2)
-        with col_l:
-            st.markdown(f"""<div class='card'><h5>[3] Structural BOS Detector</h5><p style='font-size:13px; color:#9ca3af;'>{bos_note}</p></div>""", unsafe_allow_html=True)
-        with col_r:
-            st.markdown(f"""<div class='card'><h5>[4] Order-Flow CHoCH Tracker</h5><p style='font-size:13px; color:#9ca3af;'>{choch_note}</p></div>""", unsafe_allow_html=True)
-            
-        # [6] AI Commentaries Engine Viewport
-        st.markdown("#### [6] Real-Time Algorithmic Commentary Analytics")
-        st.info(f"💡 Systematic Order Flow Footprint Summary: {sel_asset} structural frames match programmatic models. {bos_note}. Maintain primary risk matrix configuration profiles.")
-        
-        # [8 & 14] Equity Curves & Verification Generator Canvas
-        st.markdown("#### [8 & 14] Algorithmic Performance Verification & Screenshot Processing")
-        c_curve, c_gen = st.columns([2, 1])
-        with c_curve:
-            # Mock Equity Curve Array
-            eq_points = np.cumprod(1 + np.random.normal(0.002, 0.01, 100)) * 1000
-            fig_eq = go.Figure()
-            fig_eq.add_trace(go.Scatter(y=eq_points, mode='lines', line=dict(color='#a855f7', width=3), name="Account Vector Progression"))
-            fig_eq.update_layout(title="Active Portfolio Simulation Curve Trace", plot_bgcolor="#121216", paper_bgcolor="#0a0a0c", font=dict(color="#fff"), height=220, margin=dict(l=10,r=10,t=30,b=10))
-            st.plotly_chart(fig_eq, use_container_width=True)
-        with c_gen:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("📸 Compile Verified Performance Screenshot File", use_container_width=True):
-                st.success("Platform state capture executed successfully. Distribution image compiled.")
+        st.markdown("### 📊 Market Scanner")
+        st.caption("Specialists first. Grade shown for signal quality.")
+        rows=[]; prog=st.progress(0); items=list(pairs.items())
+        for i,(name,sym) in enumerate(items):
+            res,conf,sig,df_raw=run_strats(sym,asset_name=name)
+            b=sum(1 for s,_ in res.values() if s=="BUY")
+            s=sum(1 for s,_ in res.values() if s=="SELL")
+            spec=SPECIALISTS.get(name,{})
+            cond,cond_icon,cond_color,_=get_market_condition(df_raw) if df_raw is not None else ("—","","","")
+            rows.append({"Asset":name,"Signal":sig,
+                "Confidence":f"{conf}%" if pro else "🔒",
+                "Agree":f"{max(b,s)}/6" if pro else "🔒",
+                "Market":f"{cond_icon} {cond}" if pro else "🔒",
+                "Specialist":"⭐" if spec else ""})
+            prog.progress((i+1)/len(items))
+        prog.empty()
+        sc=pd.DataFrame(rows)
+        strong=[r for r in rows if r["Signal"] in ("STRONG BUY","STRONG SELL")]
+        if strong:
+            for r in strong:
+                cv=int(r["Confidence"].replace("%","")) if "%" in str(r["Confidence"]) else 0
+                banner(r["Signal"],r["Asset"],cv)
+        c1,c2=st.columns(2)
+        with c1:
+            st.markdown("**🚀 Buys**")
+            st.dataframe(sc[sc["Signal"].str.contains("BUY",na=False)].head(5),use_container_width=True,hide_index=True)
+        with c2:
+            st.markdown("**📉 Sells**")
+            st.dataframe(sc[sc["Signal"].str.contains("SELL",na=False)].head(5),use_container_width=True,hide_index=True)
+        st.dataframe(sc,use_container_width=True,hide_index=True)
 
+    # ── TRADE OF THE DAY ───────────────────────────────────────────────────────
     with t3:
-        # [12] NEWS IQ MACRO RADAR MODULE MATCHING PIPNEX UI SPECIFICATIONS
-        st.markdown("### NewsIQ — Upcoming Macro Events")
-        st.markdown("⚡ *High-Velocity economic data points impacting Gold (XAUUSD) and Major USD Currency pairs.*")
-        
-        macro_events = [
-            {"time": "In 17h 54m", "impact": "HIGH IMPACT (NFP)", "title": "Core Retail Sales m/m", "consensus": "Consensus: 0.6% | Previous: 0.7%", "class": "tag-purple"},
-            {"time": "In 18h 54m", "impact": "MEDIUM VOLATILITY", "title": "Presidential Macro Address Framework", "consensus": "Algorithmic Market Rebalancing Expected", "class": "tag-amber"},
-            {"time": "In 23h 24m", "impact": "CRITICAL RISK PROFILE", "title": "US Federal Funds Interest Rate Decision (FOMC)", "consensus": "Consensus: 3.75% | Previous: 3.75%", "class": "tag-red"},
-            {"time": "In 23h 24m", "impact": "CRITICAL RISK PROFILE", "title": "FOMC Economic Summary Projections Balance", "consensus": "High volatility liquidity expansion imminent", "class": "tag-red"}
-        ]
-        
-        for me in macro_events:
-            st.markdown(f"""
-            <div class='macro-card'>
-                <div style='display:flex; justify-content:between; align-items:center; margin-bottom:8px;'>
-                    <span class='{me['class']}'>{me['impact']}</span>
-                    <span style='color:#9ca3af; font-size:12px; margin-left:auto;'>⏳ {me['time']}</span>
-                </div>
-                <div style='font-size:15px; font-weight:700; color:#ffffff; margin-bottom:4px;'>{me['title']}</div>
-                <div style='font-size:12px; color:#a1a1aa;'>{me['consensus']}</div>
+        st.markdown("### 🏆 Trade of the Day")
+        st.caption("Best quality setup after all filters applied.")
+        if not pro: st.error("🔒 Premium only.")
+        else:
+            best={"conf":0,"sig":"WAIT","name":"","sym":"","res":{},"grade":"D","is_spec":False}
+            with st.spinner("Finding best quality setup..."):
+                for name,sym in ALL_PAIRS.items():
+                    res,conf,sig,df_raw=run_strats(sym,asset_name=name)
+                    if sig=="WAIT" or conf<67 or df_raw is None: continue
+                    candle_ok,_=check_candle_quality(df_raw)
+                    atr_ok,_=check_atr_filter(df_raw)
+                    weekly_ok,_,weekly_aligned=check_weekly_trend(sym,sig)
+                    session_ok,_=get_session_status(name)
+                    tf_res,mtf_sig,mtf_note=run_mtf(sym,asset_name=name)
+                    mtf_ok=(("BUY" in mtf_sig and "BUY" in sig) or ("SELL" in mtf_sig and "SELL" in sig))
+                    grade,_,_,_=get_signal_grade(conf,candle_ok,atr_ok,weekly_aligned,session_ok,mtf_ok,name in SPECIALISTS)
+                    is_spec=name in SPECIALISTS
+                    grade_score={"A":4,"B":3,"C":2,"D":1}.get(grade,0)
+                    best_score={"A":4,"B":3,"C":2,"D":1}.get(best["grade"],0)
+                    eff=conf+grade_score*5+(5 if is_spec else 0)
+                    best_eff=best["conf"]+best_score*5+(5 if best["is_spec"] else 0)
+                    if eff>best_eff and grade!="D":
+                        best={"conf":conf,"sig":sig,"name":name,"sym":sym,"res":res,
+                              "grade":grade,"is_spec":is_spec,"tf_res":tf_res,
+                              "mtf_sig":mtf_sig,"mtf_note":mtf_note,"mtf_ok":mtf_ok}
+
+            banner(best["sig"],best["name"],best["conf"],best.get("grade"))
+            c1,c2,c3,c4=st.columns(4)
+            c1.metric("Asset",best["name"]); c2.metric("Signal",best["sig"])
+            c3.metric("Confidence",f"{best['conf']}%"); c4.metric("Grade",best.get("grade","—"))
+            st.progress(best["conf"]/100)
+            entry,sl,tp1,tp2,tp3,atr=get_setup(best["sym"],best["sig"])
+            if entry:
+                mtf_sig=best.get("mtf_sig","—"); mtf_note=best.get("mtf_note","")
+                mtfc="#3fb950" if "BUY" in mtf_sig else "#f85149" if "SELL" in mtf_sig else "#8b949e"
+                st.markdown(f"""<div style='background:#161b22;border-radius:8px;padding:10px;
+                border-left:4px solid {mtfc};margin:10px 0;font-size:13px'>
+                🕐 <b>MTF:</b> {mtf_sig} — {mtf_note}</div>""",unsafe_allow_html=True)
+                c1,c2,c3,c4,c5=st.columns(5)
+                c1.metric("Entry",f"{round(entry,4)}"); c2.metric("SL",f"{round(sl,4)}")
+                c3.metric("TP1",f"{round(tp1,4)}"); c4.metric("TP2",f"{round(tp2,4)}"); c5.metric("TP3",f"{round(tp3,4)}")
+                if st.button("🎫 Auto Ticket",key="totd_tk",use_container_width=True):
+                    ok=auto_ticket(best["name"],best["sig"],best["conf"],entry,sl,tp1,tp2,tp3,best["grade"],"Trade of Day")
+                    st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
+                chart(best["sym"],best["name"],best["sig"],entry,sl,tp1,tp2,ckey="totd_chart",asset_name=best["name"])
+
+    # ── DEEP ANALYSIS ──────────────────────────────────────────────────────────
+    with t4:
+        st.markdown("### 🔬 Deep Analysis")
+        if not pro: st.error("🔒 Premium only.")
+        else:
+            sel=st.selectbox("Choose Asset",list(ALL_PAIRS.keys()),key="deep_sel")
+            sym=ALL_PAIRS[sel]
+            with st.spinner(f"Full analysis of {sel}..."):
+                res,conf,sig,df_raw=run_strats(sym,asset_name=sel)
+                tf_res,mtf_sig,mtf_note=run_mtf(sym,asset_name=sel)
+                if df_raw is not None:
+                    candle_ok,candle_msg=check_candle_quality(df_raw)
+                    atr_ok,atr_msg=check_atr_filter(df_raw)
+                    weekly_ok,weekly_msg,weekly_aligned=check_weekly_trend(sym,sig)
+                    session_ok,session_msg=get_session_status(sel)
+                    mtf_ok=(("BUY" in mtf_sig and "BUY" in sig) or ("SELL" in mtf_sig and "SELL" in sig))
+                    cond,cond_icon,cond_color,cond_msg=get_market_condition(df_raw)
+                    grade,grade_cls,grade_label,grade_action=get_signal_grade(
+                        conf,candle_ok,atr_ok,weekly_aligned,session_ok,mtf_ok,sel in SPECIALISTS)
+                else:
+                    candle_ok=atr_ok=weekly_ok=session_ok=mtf_ok=True
+                    candle_msg=atr_msg=weekly_msg=session_msg="No data"
+                    cond,cond_icon,cond_color,cond_msg="Unknown","❓","#8b949e","No data"
+                    grade,grade_cls,grade_label,grade_action="C","grade-c","⚠️ Grade C","Proceed with caution"
+
+            banner(sig,sel,conf,grade)
+
+            # Grade + Market Condition strip
+            st.markdown(f"""<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px'>
+            <div style='background:#161b22;border-radius:10px;padding:12px;border-left:4px solid {"#238636" if grade=="A" else "#9e6a03" if grade=="B" else "#da3633"}'>
+            <b>{grade_label}</b><br><span style='color:#8b949e;font-size:13px'>{grade_action}</span>
             </div>
-            """, unsafe_allow_html=True)
-            if st.button("Trigger NewsIQ AI Volatility Analysis Engine", key=me['title']):
-                st.info(f"Running historical pattern match models for: **{me['title']}**...")
+            <div style='background:#161b22;border-radius:10px;padding:12px;border-left:4px solid {cond_color}'>
+            <b>{cond_icon} {cond} Market</b><br><span style='color:#8b949e;font-size:13px'>{cond_msg}</span>
+            </div>
+            </div>""",unsafe_allow_html=True)
 
-# ─── USER PERFORMANCE ACADEMY MODULES ──────────────────────────────────────────
-elif pg == "Academy":
-    st.markdown("### 🏫 Module Learning Base Matrix")
-    st.markdown("<div class='academy-card'><h3>[7] Integrated Journal Analytics Model</h3><p style='color:#9ca3af; font-size:13px;'>Review systemic win rates, distribution arrays, drawdowns and holding timelines inside automated analytics drawers.</p></div>", unsafe_allow_html=True)
+            # Quality filters
+            st.markdown("#### ✅ Quality Filters")
+            filters=[
+                ("🕯️ Candle Quality",candle_ok,candle_msg),
+                ("📊 ATR/Volatility",atr_ok,atr_msg),
+                ("📅 Weekly Trend",weekly_ok,weekly_msg),
+                ("🕐 Session Timing",session_ok,session_msg),
+                ("🔀 Multi-Timeframe",mtf_ok,f"{mtf_sig} — {mtf_note}")]
+            fc1,fc2=st.columns(2)
+            for i,(label,ok,msg) in enumerate(filters):
+                col=fc1 if i%2==0 else fc2
+                col.markdown(f"""<div style='background:#161b22;border-radius:8px;padding:10px;
+                margin-bottom:8px;border-left:3px solid {"#3fb950" if ok else "#f85149"}'>
+                <b>{"✅" if ok else "❌"} {label}</b><br>
+                <span style='color:#8b949e;font-size:12px'>{msg}</span></div>""",unsafe_allow_html=True)
 
-# ─── SYSTEM PERFORMANCE SYSTEM DATABASE RECORD TRACKERS ─────────────────────────
-elif pg == "Journal":
-    st.markdown("### 📓 System Historical Logs Engine")
-    st.info("Performance vectors ledger reporting synchronized with primary server cluster configurations.")
+            st.markdown("#### 📊 Strategy Breakdown")
+            spec=SPECIALISTS.get(sel,{}); best_strats=spec.get("best",[])
+            for name,(fn,ico,desc) in STRATS.items():
+                s,reason=res.get(name,("NEUTRAL","No data"))
+                col="#238636" if s=="BUY" else "#da3633" if s=="SELL" else "#9e6a03"
+                dot="🟢" if s=="BUY" else "🔴" if s=="SELL" else "🟡"
+                sr=reason.replace("<","&lt;").replace(">","&gt;")
+                is_smc="SMC" in name; is_best=name in best_strats
+                border_r=f";border-right:2px solid #7c3aed" if is_smc else ""
+                if is_best and spec:
+                    sc2=spec.get("color","#ffd200")
+                    border_r=f";border-right:3px solid {sc2}"
+                smc_tag="&nbsp;<span class='smc-badge'>SMC</span>" if is_smc else ""
+                best_tag=""
+                if is_best and spec:
+                    sc3=spec.get("color","#ffd200")
+                    best_tag=f"&nbsp;<span style='background:{sc3};color:#000;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700'>⭐ 2×</span>"
+                st.markdown(f"""<div style='background:#161b22;border-radius:10px;padding:10px 12px;
+                margin-bottom:7px;border-left:4px solid {col}{border_r}'>
+                <div style='display:flex;justify-content:space-between;align-items:center'>
+                  <div><b>{dot} {ico} {name}</b>{smc_tag}{best_tag}
+                    <span style='color:#8b949e;font-size:11px;margin-left:6px'>{desc}</span></div>
+                  <span style='background:{col};color:#fff;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700'>{s}</span>
+                </div>
+                <div style='color:#8b949e;font-size:12px;margin-top:5px'>{sr}</div>
+                </div>""",unsafe_allow_html=True)
+
+            b=sum(1 for s,_ in res.values() if s=="BUY"); sv=sum(1 for s,_ in res.values() if s=="SELL")
+            c1,c2,c3=st.columns(3)
+            c1.metric("🟢 Buying",b); c2.metric("🔴 Selling",sv); c3.metric("🟡 Neutral",6-b-sv)
+
+            entry,sl,tp1,tp2,tp3,atr=get_setup(sym,sig)
+            if entry and sig!="WAIT":
+                st.markdown("---")
+                c1,c2,c3,c4,c5=st.columns(5)
+                c1.metric("Entry",f"{round(entry,4)}"); c2.metric("SL",f"{round(sl,4)}")
+                c3.metric("TP1",f"{round(tp1,4)}"); c4.metric("TP2",f"{round(tp2,4)}"); c5.metric("TP3",f"{round(tp3,4)}")
+                # Position sizing suggestion
+                is_forex="USD" in sel or "EUR" in sel or "GBP" in sel or "JPY" in sel or "AUD" in sel or "CHF" in sel or "CAD" in sel
+                risk_adj=2.0 if grade=="A" else 1.5 if grade=="B" else 1.0
+                st.info(f"💡 **Suggested risk:** {risk_adj}% for Grade {grade} signal — adjust in Risk Calculator")
+                if st.button("🎫 Auto Ticket",key="deep_tk",use_container_width=True):
+                    ok=auto_ticket(sel,sig,conf,entry,sl,tp1,tp2,tp3,grade,"Deep Analysis")
+                    st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
+                chart(sym,sel,sig,entry,sl,tp1,tp2,ckey=f"deep_{sel}",asset_name=sel)
+
+    # ── NEWS TRADING ───────────────────────────────────────────────────────────
+    with t5:
+        st.markdown("### 🗞️ News Trading")
+        if not pro: st.error("🔒 Premium only.")
+        else:
+            with st.spinner("Loading calendar..."): ndf=get_news()
+            if "Impact" in ndf.columns:
+                hi=ndf[ndf["Impact"]=="High"]; me=ndf[ndf["Impact"]=="Medium"]
+                if not hi.empty:
+                    st.markdown("**🔴 High Impact Events:**")
+                    for _,row in hi.iterrows():
+                        curr=row.get("Currency",""); aff=NP.get(curr,[curr])
+                        st.markdown(f"""<div style='background:#161b22;border-radius:10px;padding:12px;
+                        margin-bottom:8px;border-left:4px solid #ffd200'>
+                        <div style='display:flex;justify-content:space-between'>
+                          <div><span style='background:#f85149;color:#fff;border-radius:5px;
+                          padding:1px 7px;font-size:11px'>HIGH</span>&nbsp;<b>{row.get("Event","")}</b></div>
+                          <div style='color:#8b949e;font-size:12px'>{row.get("Time","")}</div>
+                        </div>
+                        <div style='margin-top:6px;font-size:13px;color:#8b949e'>
+                          <b style='color:#ffd200'>{curr}</b> · Forecast: <b>{row.get("Forecast","—")}</b>
+                          · Previous: <b>{row.get("Previous","—")}</b></div>
+                        <div style='margin-top:5px;font-size:12px;color:#58a6ff'>📌 {" · ".join(aff[:4])}</div>
+                        </div>""",unsafe_allow_html=True)
+                if not me.empty:
+                    with st.expander(f"🟡 Medium ({len(me)})"):
+                        for _,row in me.iterrows():
+                            st.write(f"**{row.get('Time','')}** — {row.get('Currency','')} {row.get('Event','')} | {row.get('Forecast','—')}")
+            st.markdown("---")
+            c1,c2=st.columns([2,1])
+            with c1: np_=st.selectbox("Pair to trade",list(ALL_PAIRS.keys()),key="news_pair")
+            with c2:
+                st.markdown("<br>",unsafe_allow_html=True)
+                run_n=st.button("🔍 Generate Plan",key="news_gen",use_container_width=True)
+            if run_n:
+                sym=ALL_PAIRS[np_]; res,conf,sig,df_raw=run_strats(sym,asset_name=np_)
+                entry,sl,tp1,tp2,tp3,_=get_setup(sym,sig)
+                banner(sig,np_,conf)
+                c1,c2=st.columns(2)
+                with c1:
+                    st.markdown(f"""<div class='card' style='border-left:4px solid #0072ff'>
+                    <b>📊 Technical</b><br>Signal: <b>{sig}</b> — {conf}%<br><br>
+                    {"✅ Use after news confirms" if sig!="WAIT" else "⚠️ Wait for reaction"}</div>""",unsafe_allow_html=True)
+                with c2:
+                    if entry and sig!="WAIT":
+                        st.markdown(f"""<div class='card' style='border-left:4px solid #ffd700'>
+                        <b>🎯 Levels</b><br>Entry: <b>{round(entry,4)}</b><br>
+                        SL: <b style='color:#f85149'>{round(sl,4)}</b><br>
+                        TP1: <b style='color:#3fb950'>{round(tp1,4)}</b></div>""",unsafe_allow_html=True)
+                with st.spinner("AI analysis..."):
+                    ai_txt=ai_call(f"Forex news trader. Asset: {np_}\nCalendar:\n{ndf.to_string(index=False)}\nEvents affecting asset, direction, timing, risk, trade plan. Bullets only.",500)
+                st.markdown(f"""<div class='card' style='border-left:4px solid #58a6ff;line-height:1.8'>
+                {ai_txt.replace(chr(10),"<br>")}</div>""",unsafe_allow_html=True)
+                if entry: st.markdown("---"); chart(sym,np_,sig,entry,sl,tp1,tp2,ckey=f"news_{np_}",asset_name=np_)
+            st.markdown("---")
+            c1,c2=st.columns(2)
+            with c1:
+                st.markdown("""<div class='card'><b style='color:#3fb950'>✅ DO</b><br><br>
+                Wait for candle <b>close</b> after news<br>Trade the <b>surprise</b> direction<br>
+                Use <b>wider stops</b> on Gold/BTC<br>Take profits <b>quickly</b></div>""",unsafe_allow_html=True)
+            with c2:
+                st.markdown("""<div class='card'><b style='color:#f85149'>❌ DON'T</b><br><br>
+                Don't trade <b>into</b> the release<br>Don't hold through NFP/FOMC blind<br>
+                Max <b>1% risk</b> on news trades<br>Don't trade if spread is <b>very wide</b></div>""",unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MULTI-TIMEFRAME ANALYZER (M1 → W1)
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Timeframes":
+    st.title("🕐 Multi-Timeframe Analyzer")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>Analyze any single timeframe from M1 to W1, or compare several side by side.</div>",unsafe_allow_html=True)
+    if not pro: st.error("🔒 Premium only."); st.stop()
+
+    c1,c2=st.columns([2,1])
+    with c1: tf_asset=st.selectbox("Asset",list(ALL_PAIRS.keys()),key="tf_asset")
+    with c2: st.markdown("<br>",unsafe_allow_html=True)
+
+    tf_keys=list(TF_CONFIG.keys())
+    selected_tfs=st.multiselect("Timeframes to compare",tf_keys,
+                                  default=["M15","H1","H4","D1"],key="tf_multi")
+
+    if not selected_tfs:
+        st.info("Select at least one timeframe above.")
+    else:
+        sym=ALL_PAIRS[tf_asset]
+        cols=st.columns(len(selected_tfs))
+        results_summary=[]
+        for i,tf_key in enumerate(selected_tfs):
+            with st.spinner(f"Analyzing {tf_key}..."):
+                res,conf,sig,df_tf,note=run_single_timeframe(sym,tf_key,asset_name=tf_asset)
+            cfg=TF_CONFIG[tf_key]
+            with cols[i]:
+                if sig in ("NO DATA","ERROR"):
+                    st.markdown(f"""<div class='card' style='text-align:center'>
+                    <b>{tf_key}</b><br><span style='color:#8b949e;font-size:12px'>{note}</span></div>""",unsafe_allow_html=True)
+                    continue
+                col="#3fb950" if "BUY" in sig else "#f85149" if "SELL" in sig else "#8b949e"
+                st.markdown(f"""<div class='card' style='text-align:center;border-left:4px solid {col}'>
+                <b>{cfg['label']}</b><br>
+                <span style='font-size:18px;font-weight:900;color:{col}'>{sig}</span><br>
+                <span style='font-size:13px;color:#8b949e'>{conf}% confidence</span>
+                </div>""",unsafe_allow_html=True)
+                results_summary.append((tf_key,sig,conf))
+            if cfg["light"]:
+                st.caption(f"⚠️ {note}")
+
+        if results_summary:
+            buys=sum(1 for _,s,_ in results_summary if "BUY" in s)
+            sells=sum(1 for _,s,_ in results_summary if "SELL" in s)
+            st.markdown("---")
+            if buys>sells and buys>=len(results_summary)*0.6:
+                st.success(f"✅ {buys}/{len(results_summary)} timeframes lean BUY — reasonable alignment")
+            elif sells>buys and sells>=len(results_summary)*0.6:
+                st.error(f"📉 {sells}/{len(results_summary)} timeframes lean SELL — reasonable alignment")
+            else:
+                st.warning("⚠️ Timeframes are conflicting — no clear cross-timeframe agreement")
+
+        st.markdown("---")
+        st.markdown("#### 🔬 Detailed breakdown for selected timeframe")
+        detail_tf=st.selectbox("View details for",selected_tfs,key="tf_detail")
+        res,conf,sig,df_tf,note=run_single_timeframe(sym,detail_tf,asset_name=tf_asset)
+        if res:
+            st.caption(note)
+            for name,(s,reason) in res.items():
+                col="#238636" if s=="BUY" else "#da3633" if s=="SELL" else "#9e6a03"
+                dot="🟢" if s=="BUY" else "🔴" if s=="SELL" else "🟡"
+                st.markdown(f"""<div style='background:#161b22;border-radius:8px;padding:10px 12px;
+                margin-bottom:6px;border-left:3px solid {col}'>
+                <b>{dot} {name}</b>
+                <span style='background:{col};color:#fff;padding:1px 8px;border-radius:7px;font-size:11px;margin-left:8px'>{s}</span>
+                <br><small style='color:#8b949e'>{reason}</small></div>""",unsafe_allow_html=True)
+            if df_tf is not None and len(df_tf)>10:
+                fig=go.Figure()
+                if "Open" in df_tf.columns:
+                    fig.add_trace(go.Candlestick(x=df_tf.index,open=df_tf["Open"],high=df_tf["High"],
+                        low=df_tf["Low"],close=df_tf["Close"],increasing_line_color="#3fb950",decreasing_line_color="#f85149"))
+                else:
+                    fig.add_trace(go.Scatter(x=df_tf.index,y=df_tf["Close"],line=dict(color="#58a6ff")))
+                fig.update_layout(title=f"{tf_asset} — {TF_CONFIG[detail_tf]['label']}",
+                    plot_bgcolor="#0d1117",paper_bgcolor="#0d1117",font=dict(color="#e6edf3"),
+                    height=350,xaxis=dict(gridcolor="#21262d",rangeslider_visible=False),
+                    yaxis=dict(gridcolor="#21262d"))
+                st.plotly_chart(fig,use_container_width=True,key=f"tf_chart_{detail_tf}")
+        else:
+            st.warning(note)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRADE TICKETS
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Tickets":
+    st.title("🎫 Trade Ticket Panel")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>All open positions. Close here to update your journal.</div>",unsafe_allow_html=True)
+    if not pro: st.error("🔒 Premium only."); st.stop()
+
+    if st.button("🔄 Auto-Scan & Ticket All Grade A+B Signals",key="scan_all",use_container_width=True):
+        added=0
+        with st.spinner("Scanning with all quality filters..."):
+            for name,sym in ALL_PAIRS.items():
+                res,conf,sig,df_raw=run_strats(sym,asset_name=name)
+                if sig=="WAIT" or conf<67 or df_raw is None: continue
+                candle_ok,_=check_candle_quality(df_raw)
+                atr_ok,_=check_atr_filter(df_raw)
+                _,_,weekly_aligned=check_weekly_trend(sym,sig)
+                session_ok,_=get_session_status(name)
+                tf_res,mtf_sig,_=run_mtf(sym,asset_name=name)
+                mtf_ok=(("BUY" in mtf_sig and "BUY" in sig) or ("SELL" in mtf_sig and "SELL" in sig))
+                grade,_,_,_=get_signal_grade(conf,candle_ok,atr_ok,weekly_aligned,session_ok,mtf_ok,name in SPECIALISTS)
+                if grade in ("A","B"):
+                    entry,sl,tp1,tp2,tp3,_=get_setup(sym,sig)
+                    if entry and auto_ticket(name,sig,conf,entry,sl,tp1,tp2,tp3,grade,"Auto Scan"):
+                        added+=1
+        st.success(f"✅ {added} Grade A/B ticket(s) created!")
+
+    open_t=[t for t in st.session_state.journal if t.get("Result")=="Open"]
+    if not open_t:
+        st.markdown("""<div style='background:#161b22;border:1px solid #30363d;
+        border-radius:14px;padding:40px;text-align:center;margin-top:20px'>
+        <div style='font-size:36px'>🎫</div>
+        <div style='font-size:17px;color:#8b949e;margin-top:10px'>No open tickets</div>
+        <div style='color:#8b949e;font-size:13px;margin-top:6px'>Use Pulse Signal or scan above.</div>
+        </div>""",unsafe_allow_html=True)
+    else:
+        st.markdown(f"**{len(open_t)} open position(s):**")
+        for i,tr in enumerate(open_t):
+            ib="BUY" in tr.get("Signal","")
+            brd="#3fb950" if ib else "#f85149"
+            icon="🚀" if ib else "📉"
+            grade=tr.get("Grade","—")
+            gc="grade-a" if grade=="A" else "grade-b" if grade=="B" else "grade-c"
+            ji=next((j for j,t in enumerate(st.session_state.journal) if t==tr),None)
+            spec=SPECIALISTS.get(tr.get("Asset",""),{})
+            spec_icon=spec.get("icon","")
+            st.markdown(f"""<div style='background:#161b22;border:2px solid {brd};
+            border-radius:12px;padding:16px;margin-bottom:10px'>
+            <div style='display:flex;justify-content:space-between;margin-bottom:10px'>
+              <div>
+                <span style='font-size:17px;font-weight:900;color:{brd}'>{icon} {tr.get("Signal","")}</span>
+                &nbsp;<span class='{gc}' style='font-size:12px'>{grade}</span>
+                &nbsp;<span style='font-size:18px;font-weight:700;color:#e6edf3'>{spec_icon} {tr.get("Asset","")}</span>
+              </div>
+              <div style='text-align:right;font-size:12px;color:#8b949e'>
+                {tr.get("Date","")} {tr.get("Time","")}<br>
+                <b style='color:#ffd200'>{tr.get("Confidence",0)}%</b> · {tr.get("Source","Manual")}
+              </div>
+            </div>
+            <div style='display:grid;grid-template-columns:repeat(5,1fr);gap:5px'>
+              <div style='background:#0d1117;border-radius:6px;padding:7px;text-align:center'>
+                <div style='font-size:9px;color:#8b949e'>ENTRY</div>
+                <div style='font-size:11px;font-weight:700'>{tr.get("Entry","—")}</div>
+              </div>
+              <div style='background:#0d1117;border-radius:6px;padding:7px;text-align:center'>
+                <div style='font-size:9px;color:#8b949e'>STOP</div>
+                <div style='font-size:11px;font-weight:700;color:#f85149'>{tr.get("SL","—")}</div>
+              </div>
+              <div style='background:#0d1117;border-radius:6px;padding:7px;text-align:center'>
+                <div style='font-size:9px;color:#8b949e'>TP1</div>
+                <div style='font-size:11px;font-weight:700;color:#3fb950'>{tr.get("TP1","—")}</div>
+              </div>
+              <div style='background:#0d1117;border-radius:6px;padding:7px;text-align:center'>
+                <div style='font-size:9px;color:#8b949e'>TP2</div>
+                <div style='font-size:11px;font-weight:700;color:#3fb950'>{tr.get("TP2","—")}</div>
+              </div>
+              <div style='background:#0d1117;border-radius:6px;padding:7px;text-align:center'>
+                <div style='font-size:9px;color:#8b949e'>TP3</div>
+                <div style='font-size:11px;font-weight:700;color:#3fb950'>{tr.get("TP3","—")}</div>
+              </div>
+            </div></div>""",unsafe_allow_html=True)
+            if ji is not None:
+                b1,b2,b3,b4=st.columns(4)
+                with b1:
+                    if st.button("✅ Win",key=f"w_{i}",use_container_width=True):
+                        st.session_state.journal[ji]["Result"]="Win"; st.rerun()
+                with b2:
+                    if st.button("❌ Loss",key=f"l_{i}",use_container_width=True):
+                        st.session_state.journal[ji]["Result"]="Loss"; st.rerun()
+                with b3:
+                    if st.button("➖ B/E",key=f"b_{i}",use_container_width=True):
+                        st.session_state.journal[ji]["Result"]="Breakeven"; st.rerun()
+                with b4:
+                    if st.button("🗑️ Remove",key=f"r_{i}",use_container_width=True):
+                        st.session_state.journal.pop(ji); st.rerun()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JOURNAL
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Journal":
+    st.title("📓 Trade Journal")
+    if not pro: st.error("🔒 Premium only."); st.stop()
+    if st.session_state.sig_history:
+        with st.expander(f"📡 Signal History — {len(st.session_state.sig_history)} logged"):
+            st.dataframe(pd.DataFrame(st.session_state.sig_history),use_container_width=True,hide_index=True)
+    with st.expander("➕ Add Manually"):
+        c1,c2,c3=st.columns(3)
+        ja=c1.selectbox("Asset",list(ALL_PAIRS.keys()),key="j_a")
+        js=c2.selectbox("Signal",["STRONG BUY","BUY","SELL","STRONG SELL"],key="j_s")
+        jr=c3.selectbox("Result",["Open","Win","Loss","Breakeven"],key="j_r")
+        c4,c5=st.columns(2)
+        je=c4.number_input("Entry",format="%.5f",key="j_e"); jsl=c5.number_input("SL",format="%.5f",key="j_sl")
+        jc=st.slider("Confidence",0,100,67,key="j_c"); jn=st.text_input("Notes",key="j_n")
+        if st.button("💾 Save",key="j_save"):
+            st.session_state.journal.append({
+                "Date":str(datetime.date.today()),"Time":datetime.datetime.now().strftime("%H:%M"),
+                "Asset":ja,"Signal":js,"Grade":"Manual","Entry":je,"SL":jsl,
+                "TP1":0,"TP2":0,"TP3":0,"Confidence":jc,"Result":jr,"Source":"Manual","Notes":jn})
+            st.success("✅ Saved!")
+    if st.session_state.journal:
+        df=pd.DataFrame(st.session_state.journal)
+        st.dataframe(df,use_container_width=True,hide_index=True)
+        wins=len(df[df["Result"]=="Win"]); loss=len(df[df["Result"]=="Loss"]); tot=wins+loss
+        wr=round(wins/tot*100,1) if tot>0 else 0
+        # Streak tracker
+        results=[t["Result"] for t in reversed(st.session_state.journal) if t["Result"] in ("Win","Loss")]
+        streak=0; streak_type=""
+        if results:
+            streak_type=results[0]
+            for r in results:
+                if r==streak_type: streak+=1
+                else: break
+        c1,c2,c3,c4,c5=st.columns(5)
+        c1.metric("Total",len(df)); c2.metric("Open",len(df[df["Result"]=="Open"]))
+        c3.metric("Win Rate",f"{wr}%"); c4.metric("W/L",f"{wins}/{loss}")
+        streak_label=f"🔥 {streak} Win streak" if streak_type=="Win" else f"❄️ {streak} Loss streak" if streak_type=="Loss" else "—"
+        c5.metric("Streak",streak_label)
+    else: st.info("No trades yet.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PERFORMANCE
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Performance":
+    st.title("📈 Performance Dashboard")
+    if not pro: st.error("🔒 Premium only."); st.stop()
+    if not st.session_state.journal: st.info("Log trades to see stats."); st.stop()
+    df=pd.DataFrame(st.session_state.journal)
+    wins=len(df[df["Result"]=="Win"]); loss=len(df[df["Result"]=="Loss"]); tot=wins+loss
+    wr=round(wins/tot*100,1) if tot>0 else 0
+    c1,c2,c3,c4=st.columns(4)
+    c1.metric("Total Trades",tot); c2.metric("Wins",wins); c3.metric("Losses",loss); c4.metric("Win Rate",f"{wr}%")
+    if wr>=70: st.success(f"🎯 {wr}% win rate — above target! Keep following Grade A/B signals.")
+    elif wr>=60: st.warning(f"⚠️ {wr}% win rate — focus on Grade A signals only.")
+    else: st.error(f"🚨 {wr}% win rate — only take Grade A signals and ensure MTF confirmation.")
+    st.divider()
+    closed=df[df["Result"].isin(["Win","Loss"])]
+    if not closed.empty:
+        st.subheader("Win Rate by Asset")
+        av=closed.groupby("Asset")["Result"].value_counts().unstack(fill_value=0)
+        if "Win" in av.columns and "Loss" in av.columns:
+            av["Win Rate %"]=round(av["Win"]/(av["Win"]+av["Loss"])*100,1)
+            st.dataframe(av.sort_values("Win Rate %",ascending=False),use_container_width=True)
+        st.divider()
+        if "Grade" in df.columns:
+            st.subheader("Win Rate by Signal Grade")
+            gv=closed.groupby("Grade")["Result"].value_counts().unstack(fill_value=0)
+            if "Win" in gv.columns and "Loss" in gv.columns:
+                gv["Win Rate %"]=round(gv["Win"]/(gv["Win"]+gv["Loss"])*100,1)
+                st.dataframe(gv,use_container_width=True)
+        if "Signal" in df.columns:
+            st.divider(); st.subheader("Win Rate by Signal Type")
+            sv=closed.groupby("Signal")["Result"].value_counts().unstack(fill_value=0)
+            st.dataframe(sv,use_container_width=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RISK CALCULATOR
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Risk":
+    st.title("💰 Risk Calculator")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>Adjust risk % by signal grade: Grade A = 2%, Grade B = 1.5%, Grade C = 1%</div>",unsafe_allow_html=True)
+    c1,c2=st.columns(2)
+    with c1:
+        bal=st.number_input("Balance ($)",min_value=10.0,value=1000.0,key="r_bal")
+        sg=st.selectbox("Signal Grade",["A — Full size (2%)","B — Normal (1.5%)","C — Half (1%)","Manual"],key="r_sg")
+        default_risk=2.0 if "A" in sg else 1.5 if "B" in sg else 1.0
+        rp=st.slider("Risk %",0.5,10.0,default_risk,step=0.5,key="r_rp")
+        slp=st.number_input("Stop Loss (pips)",min_value=1.0,value=20.0,key="r_sl")
+        pv=st.number_input("Pip value per 0.01 lot ($)",value=0.10,key="r_pv")
+        rr=st.slider("Risk:Reward",1,5,2,key="r_rr")
+    ra=bal*rp/100; lot=round(ra/(slp*pv/0.01)*0.01,2) if slp>0 else 0
+    with c2:
+        st.metric("Risk Amount",f"${ra:.2f}"); st.metric("Lot Size",f"{lot} lots")
+        st.metric("Potential Profit",f"${ra*rr:.2f}"); st.metric("R:R",f"1:{rr}")
+        st.progress(rp/10)
+        if rp<=2: st.success("✅ Conservative — recommended")
+        elif rp<=5: st.warning("⚠️ Moderate")
+        else: st.error("🚨 High risk — reduce size")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRICING
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Pricing":
+    st.title("💎 Plans & Pricing")
+    st.divider()
+    c1,c2=st.columns(2)
+    with c1:
+        st.markdown("""<div class='tier-box'>
+        <h3>🆓 Free</h3><h2>$0/mo</h2><hr>
+        Gold · Bitcoin · EUR/USD + 2 pairs<br>Basic signals only<br><br>
+        ❌ Quality filters (Grade system)<br>❌ Session timing filter<br>❌ Weekly trend filter<br>
+        ❌ Market condition detector<br>❌ Correlation warnings<br>❌ Auto Trade Tickets<br>❌ Position sizing by grade
+        </div>""",unsafe_allow_html=True)
+    with c2:
+        st.markdown("""<div class='tier-box gold'>
+        <h3>⚡ Premium</h3><h2>$15/mo</h2><hr>
+        ✅ All 10 assets<br>
+        ✅ 🥇 Gold · ₿ BTC · € EUR/USD Specialist Analysis<br>
+        ✅ <b>Grade A/B/C quality filtering</b><br>
+        ✅ Candle quality · ATR · Weekly trend · Session filter<br>
+        ✅ Market condition (Trending/Ranging/Volatile)<br>
+        ✅ Correlation warnings — avoid double risk<br>
+        ✅ 🎫 Auto Trade Tickets (Grade A/B only)<br>
+        ✅ Position sizing by signal grade<br>
+        ✅ Win Rate by Grade tracking<br>
+        ✅ Streak tracker<br>
+        ✅ AI Daily Briefing + News Trading<br>
+        ✅ Fibonacci + Pivot Points on charts
+        </div>""",unsafe_allow_html=True)
+    st.divider()
+    st.info("💬 Contact us to get your premium password after payment.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LEARN
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Learn":
+    st.title("📚 Education & Strategy Guide")
+    t1,t2,t3,t4=st.tabs(["🥇 Gold","₿ Bitcoin","€ EUR/USD","📖 Signal Guide"])
+
+    with t1:
+        st.markdown("### 🥇 Gold (XAU/USD) Trading Guide")
+        st.markdown("""**Why Gold is special:** Institution-driven. SMC Order Blocks + round numbers + EMA200 are the most reliable signals.
+
+**Best setups:**""")
+        c1,c2,c3=st.columns(3)
+        with c1:
+            st.markdown("""<div class='card' style='border-left:4px solid #ffd200'>
+            <b>🏦 SMC Order Block</b><br><br>Last red candle before big rally<br>
+            Entry: at OB zone<br>Stop: below OB<br>Target: round number above</div>""",unsafe_allow_html=True)
+        with c2:
+            st.markdown("""<div class='card' style='border-left:4px solid #ffd200'>
+            <b>🧱 R
