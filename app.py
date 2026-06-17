@@ -1729,4 +1729,305 @@ elif pg=="Learn":
             Entry: at OB zone<br>Stop: below OB<br>Target: round number above</div>""",unsafe_allow_html=True)
         with c2:
             st.markdown("""<div class='card' style='border-left:4px solid #ffd200'>
-            <b>🧱 R
+            <b>🧱 Round Numbers</b><br><br>$1900/$2000/$2100/$2200<br>
+            Act as massive S/R<br>Combine with OB at same level<br>= very high probability</div>""",unsafe_allow_html=True)
+        with c3:
+            st.markdown("""<div class='card' style='border-left:4px solid #ffd200'>
+            <b>📈 EMA200 Daily</b><br><br>Gold bounces off EMA200 reliably<br>
+            Highlighted in gold on chart<br>Price below = bearish bias<br>Price above = bullish bias</div>""",unsafe_allow_html=True)
+        st.info("💡 Gold spikes on USD news (NFP/FOMC/CPI). Use wider stops. Best: London + NY sessions.")
+
+    with t2:
+        st.markdown("### ₿ Bitcoin Trading Guide")
+        st.markdown("""**Why BTC is special:** Massive Fair Value Gaps that always fill. RSI Divergences on 4H are highly reliable.""")
+        c1,c2,c3=st.columns(3)
+        with c1:
+            st.markdown("""<div class='card' style='border-left:4px solid #f7931a'>
+            <b>🕳️ Fair Value Gaps</b><br><br>BTC leaves massive FVGs<br>
+            They always fill eventually<br>Enter when price returns to gap<br>Stop: beyond the gap</div>""",unsafe_allow_html=True)
+        with c2:
+            st.markdown("""<div class='card' style='border-left:4px solid #f7931a'>
+            <b>⚡ RSI Divergence</b><br><br>4H divergences are very reliable<br>
+            Bullish div at support = strong BUY<br>Bearish div at resistance = SELL<br>Best with FVG at same level</div>""",unsafe_allow_html=True)
+        with c3:
+            st.markdown("""<div class='card' style='border-left:4px solid #f7931a'>
+            <b>🧱 Round Numbers</b><br><br>$60k/$65k/$70k/$75k/$80k<br>
+            BTC always tests round numbers<br>OB or FVG at round number<br>= highest probability setup</div>""",unsafe_allow_html=True)
+        st.info("💡 BTC reacts to risk sentiment. Wider stops needed — BTC can wick 3-5%. Best on 4H/Daily.")
+
+    with t3:
+        st.markdown("### € EUR/USD Trading Guide")
+        st.markdown("""**Why EUR/USD is special:** Most trend-following pair. EMA alignment + ADX + FVGs are very reliable.""")
+        c1,c2,c3=st.columns(3)
+        with c1:
+            st.markdown("""<div class='card' style='border-left:4px solid #4488ff'>
+            <b>📈 EMA Stack</b><br><br>20>50>200 = strong uptrend<br>
+            Pullback to EMA20 = entry<br>ADX must be above 20<br>Most reliable on 4H</div>""",unsafe_allow_html=True)
+        with c2:
+            st.markdown("""<div class='card' style='border-left:4px solid #4488ff'>
+            <b>💪 ADX Filter</b><br><br>ADX above 25 = trending<br>
+            ADX above 30 = strong — full size<br>ADX below 20 = ranging, avoid<br>Best during London/NY overlap</div>""",unsafe_allow_html=True)
+        with c3:
+            st.markdown("""<div class='card' style='border-left:4px solid #4488ff'>
+            <b>🕳️ Clean FVGs</b><br><br>EUR/USD fills FVGs reliably<br>
+            High liquidity = efficient market<br>Enter on FVG retest in trend<br>Stop: beyond FVG</div>""",unsafe_allow_html=True)
+        st.info("💡 Most active: London open (3am EST) and NY open (8am EST). Avoid 5pm-midnight EST.")
+
+    with t4:
+        st.markdown("### 📖 How to Read Sparro FX AI Signals")
+        st.markdown("**Signal Grades:**")
+        c1,c2,c3=st.columns(3)
+        with c1:
+            st.markdown("""<div class='card' style='border-left:4px solid #238636;text-align:center'>
+            <span class='grade-a'>Grade A</span><br><br>
+            All filters pass<br>MTF confirmed<br>Good session<br>Weekly aligned<br><br>
+            <b>2% risk — full size</b></div>""",unsafe_allow_html=True)
+        with c2:
+            st.markdown("""<div class='card' style='border-left:4px solid #9e6a03;text-align:center'>
+            <span class='grade-b'>Grade B</span><br><br>
+            Most filters pass<br>Good setup<br>Minor concerns<br><br><br>
+            <b>1.5% risk — normal size</b></div>""",unsafe_allow_html=True)
+        with c3:
+            st.markdown("""<div class='card' style='border-left:4px solid #b94040;text-align:center'>
+            <span class='grade-c'>Grade C</span><br><br>
+            Some filters fail<br>Marginal setup<br>Proceed with caution<br><br>
+            <b>1% risk — half size or skip</b></div>""",unsafe_allow_html=True)
+        st.markdown("""
+**Quality Filters explained:**
+- 🕯️ **Candle Quality** — body must be 25%+ of range. Doji = indecision = skip
+- 📊 **ATR Filter** — volatility must be normal. Dead markets and news spikes are excluded
+- 📅 **Weekly Trend** — signal must agree with weekly timeframe. Counter-trend = lower grade
+- 🕐 **Session Timing** — EUR/USD/Gold only in London/NY. BTC any time
+- 🔀 **Multi-Timeframe** — Daily + 4H + 1H must agree for highest grade
+
+**Correlation Warning:**
+If EUR/USD AND GBP/USD both signal BUY — that's double exposure to USD weakness.
+The app warns you automatically. Pick the better grade signal, not both.
+        """)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ABOUT
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="About":
+    st.title("ℹ️ About Sparro FX AI")
+    st.markdown("""**Sparro FX AI** — realistic signal platform designed for 70%+ win rate.
+
+**The 6 Strategies:**
+
+| Strategy | Measures | Role |
+|---|---|---|
+| EMA Trend | Direction | Full 20/50/200 stack alignment |
+| ADX Strength | Trend strength | Filters out ranging markets |
+| RSI + Divergence | Momentum | Divergence for reversals |
+| SMC Order Blocks | Institutional zones | Bank order locations |
+| SMC Fair Value Gap | Price imbalances | Magnetic price levels |
+| Support/Resistance | Key levels | Entry quality check |
+
+**Quality Filters (what makes this realistic):**
+
+| Filter | What it removes |
+|---|---|
+| Candle body filter | Doji/indecision signals |
+| ATR volatility filter | Dead markets + news spikes |
+| Weekly trend check | Counter-trend lower-probability trades |
+| Session timing | Trading outside optimal hours |
+| Multi-timeframe | Single-timeframe false signals |
+| Grade D exclusion | All poor quality setups |
+
+**Expected performance by grade:**
+- Grade A: Target 70%+ win rate
+- Grade B: Target 60-70% win rate
+- Grade C: Target 50-60% win rate — use small size or skip
+
+⚠️ *No app guarantees profits. Trade responsibly with money you can afford to risk.*""")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CURRENCY STRENGTH METER
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Strength":
+    st.title("💪 Currency Strength Meter")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>Relative strength of each major currency based on its % move across all pairs (last 5 days, hourly data).</div>",unsafe_allow_html=True)
+    if not pro: st.error("🔒 Premium only."); st.stop()
+
+    with st.spinner("Calculating currency strength..."):
+        strength=calc_currency_strength()
+
+    max_abs=max([abs(v) for v in strength.values()]+[0.01])
+    for cur,val in strength.items():
+        pct=abs(val)/max_abs*100
+        col="#3fb950" if val>0 else "#f85149" if val<0 else "#8b949e"
+        bar_w=max(pct,2)
+        st.markdown(f"""<div style='margin-bottom:10px'>
+        <div style='display:flex;justify-content:space-between;margin-bottom:4px'>
+          <b>{cur}</b><span style='color:{col};font-weight:700'>{val:+.3f}%</span>
+        </div>
+        <div style='background:#161b22;border-radius:6px;height:14px;overflow:hidden'>
+          <div style='background:{col};height:100%;width:{bar_w}%;border-radius:6px'></div>
+        </div></div>""",unsafe_allow_html=True)
+
+    st.markdown("---")
+    strongest=list(strength.keys())[0]; weakest=list(strength.keys())[-1]
+    st.info(f"💡 **Strongest:** {strongest} &nbsp;|&nbsp; **Weakest:** {weakest} — consider pairs combining these two for the cleanest directional move (e.g. {strongest}/{weakest} if that pair exists).")
+    st.caption("This is a momentum snapshot, not a signal — combine with Pulse Signal and your own analysis.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AI TRADING COACH
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Coach":
+    st.title("🧘 AI Trading Coach")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>Behavioral analysis from your journal — overtrading, revenge trading, and performance patterns.</div>",unsafe_allow_html=True)
+    if not pro: st.error("🔒 Premium only."); st.stop()
+
+    flags=detect_overtrading(st.session_state.journal)
+    if not flags:
+        st.success("✅ No concerning patterns detected in your recent trading. Keep following your plan.")
+    else:
+        for title,msg in flags:
+            st.warning(f"**{title}**\n\n{msg}")
+
+    st.markdown("---")
+    if st.session_state.journal:
+        df=pd.DataFrame(st.session_state.journal)
+        st.markdown("#### 📊 Daily Trade Count")
+        if "Date" in df.columns:
+            counts=df["Date"].value_counts().sort_index()
+            st.bar_chart(counts)
+        st.markdown("#### 🤖 AI Performance Review")
+        if st.button("Generate AI Review",key="coach_review",use_container_width=True):
+            with st.spinner("Reviewing your trading..."):
+                summary=df.to_string(index=False) if len(df)<=30 else df.tail(30).to_string(index=False)
+                review=ai_call(f"You are a trading psychology coach. Review this trade journal and give 3-4 sentences of honest, constructive feedback on patterns, discipline, and what to improve. Journal:\n{summary}",450)
+            st.markdown(f"""<div class='card' style='border-left:4px solid #58a6ff;line-height:1.8'>
+            {review.replace(chr(10),"<br>")}</div>""",unsafe_allow_html=True)
+    else:
+        st.info("Log trades in the Journal to get coaching insights.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AI CHART ANALYZER (screenshot upload)
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="ChartAI":
+    st.title("📷 AI Chart Analyzer")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>Upload a chart screenshot — AI reads it for trend, key zones, and an SMC-style read.</div>",unsafe_allow_html=True)
+    if not pro: st.error("🔒 Premium only."); st.stop()
+    if not AI_KEY:
+        st.warning("⚠️ Add ANTHROPIC_API_KEY in Streamlit secrets to enable this feature.")
+    uploaded=st.file_uploader("Upload chart screenshot",type=["png","jpg","jpeg"],key="chart_upload")
+    if uploaded and AI_KEY:
+        st.image(uploaded,use_container_width=True)
+        if st.button("🔍 Analyze Chart",key="analyze_chart",use_container_width=True):
+            import base64
+            img_bytes=uploaded.getvalue()
+            b64=base64.b64encode(img_bytes).decode()
+            media_type=uploaded.type
+            with st.spinner("AI reading the chart..."):
+                try:
+                    r=requests.post("https://api.anthropic.com/v1/messages",
+                        headers={"Content-Type":"application/json","x-api-key":AI_KEY,"anthropic-version":"2023-06-01"},
+                        json={"model":"claude-sonnet-4-6","max_tokens":700,
+                              "messages":[{"role":"user","content":[
+                                  {"type":"image","source":{"type":"base64","media_type":media_type,"data":b64}},
+                                  {"type":"text","text":"You are an SMC/price-action trading analyst. Look at this chart screenshot and give: 1) Overall trend direction 2) Key support/resistance or order block zones you can see 3) Any visible Fair Value Gaps or imbalances 4) A possible entry zone, stop loss and target IF a setup is visible 5) Confidence level (low/medium/high) and why. Be honest if the image is unclear or no clear setup exists. Bullet points."}
+                              ]}]},timeout=40)
+                    if r.status_code==200:
+                        analysis=r.json()["content"][0]["text"]
+                    else:
+                        analysis=f"AI error {r.status_code}: {r.text[:200]}"
+                except Exception as e:
+                    analysis=f"Error analyzing chart: {e}"
+            st.markdown(f"""<div class='card' style='border-left:4px solid #7c3aed;line-height:1.8'>
+            {analysis.replace(chr(10),"<br>")}</div>""",unsafe_allow_html=True)
+            st.caption("⚠️ AI chart reading is supplementary — always confirm with the live Pulse Signal and your own analysis.")
+    elif uploaded and not AI_KEY:
+        st.error("Cannot analyze — ANTHROPIC_API_KEY missing.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROP FIRM TOOLS
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="PropFirm":
+    st.title("🛡️ Prop Firm Tools")
+    st.markdown("<div style='color:#8b949e;margin-bottom:16px'>Track drawdown limits, consistency, and risk of ruin for prop firm challenges.</div>",unsafe_allow_html=True)
+    if not pro: st.error("🔒 Premium only."); st.stop()
+
+    st.markdown("#### 📉 Daily Drawdown Monitor")
+    c1,c2,c3=st.columns(3)
+    starting_bal=c1.number_input("Account starting balance ($)",min_value=100.0,value=10000.0,key="pf_bal")
+    current_bal=c2.number_input("Current balance ($)",min_value=0.0,value=10000.0,key="pf_cur")
+    max_daily_dd=c3.number_input("Max daily drawdown allowed (%)",min_value=1.0,value=5.0,key="pf_dd")
+    daily_loss_limit=starting_bal*max_daily_dd/100
+    current_dd=max(0,starting_bal-current_bal)
+    dd_pct=current_dd/starting_bal*100 if starting_bal>0 else 0
+    remaining=daily_loss_limit-current_dd
+    c1,c2,c3=st.columns(3)
+    c1.metric("Current Drawdown",f"${current_dd:.2f}",f"{dd_pct:.2f}%")
+    c2.metric("Daily Limit",f"${daily_loss_limit:.2f}")
+    c3.metric("Room Remaining",f"${max(0,remaining):.2f}")
+    if remaining<=0: st.error("🚨 Daily drawdown limit breached or at limit. Stop trading today.")
+    elif remaining<daily_loss_limit*0.3: st.warning("⚠️ Approaching daily drawdown limit. Trade carefully.")
+    else: st.success("✅ Within safe drawdown range.")
+
+    st.markdown("---")
+    st.markdown("#### 🎲 Risk of Ruin Estimator")
+    c1,c2,c3=st.columns(3)
+    df_j=pd.DataFrame(st.session_state.journal) if st.session_state.journal else pd.DataFrame()
+    closed=df_j[df_j["Result"].isin(["Win","Loss"])] if not df_j.empty and "Result" in df_j.columns else pd.DataFrame()
+    default_wr=round(len(closed[closed["Result"]=="Win"])/len(closed)*100,1) if len(closed)>0 else 50.0
+    wr_input=c1.slider("Win rate (%)",10.0,90.0,default_wr,key="pf_wr")
+    rr_input=c2.slider("Average Risk:Reward",1.0,5.0,2.0,key="pf_rr")
+    risk_input=c3.slider("Risk per trade (%)",0.5,5.0,2.0,key="pf_risk")
+    ror=calc_risk_of_ruin(wr_input,rr_input,risk_input)
+    c1,c2=st.columns(2)
+    c1.metric("Estimated Risk of Ruin",f"{ror}%")
+    if ror<5: c2.success("✅ Low risk of ruin — sustainable approach")
+    elif ror<25: c2.warning("⚠️ Moderate risk — consider reducing risk % per trade")
+    else: c2.error("🚨 High risk of ruin — reduce position sizing significantly")
+    st.caption("Simplified estimate. Real risk of ruin depends on trade sequencing and variance — use as a directional guide only.")
+
+    st.markdown("---")
+    st.markdown("#### 📊 Consistency Score")
+    if not closed.empty and "Confidence" in closed.columns:
+        results_only=closed["Result"].tolist()
+        wins=results_only.count("Win")
+        consistency=round(wins/len(results_only)*100,1) if results_only else 0
+        st.metric("Consistency Score",f"{consistency}%")
+        st.caption("Based on win/loss consistency in your logged trades. Prop firms often want stable performance, not one huge win carrying the account.")
+    else:
+        st.info("Log more trades to calculate consistency score.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN
+# ══════════════════════════════════════════════════════════════════════════════
+elif pg=="Admin":
+    if atype!="admin": st.error("🔒 Admin only."); st.stop()
+    st.title("👑 Admin Panel")
+    t1,t2,t3=st.tabs(["🔐 Passwords","👥 Subscribers","📊 Stats"])
+    with t1:
+        st.info("""Set in **Streamlit Cloud → App Settings → Secrets**:
+```toml
+ADMIN_PASSWORD    = "your-admin-pass"
+PREMIUM_PASSWORD  = "your-premium-pass"
+FREE_PASSWORD     = "sparro_free"
+ANTHROPIC_API_KEY = "sk-ant-xxx"
+```
+**Change PREMIUM_PASSWORD to lock out non-payers instantly.**""")
+    with t2:
+        with st.expander("➕ Add Subscriber"):
+            c1,c2,c3=st.columns(3)
+            sn=c1.text_input("Name",key="s_n"); se=c2.text_input("Email",key="s_e")
+            sp=c3.selectbox("Plan",["Premium $15/mo","Trial","Free"],key="s_p")
+            sd=st.date_input("Start",datetime.date.today(),key="s_d"); sno=st.text_input("Notes",key="s_no")
+            if st.button("➕ Add",key="s_add"):
+                if sn and se:
+                    st.session_state.subscribers.append({"Name":sn,"Email":se,"Plan":sp,"Start":str(sd),"Notes":sno})
+                    st.success(f"✅ {sn} added!")
+                else: st.error("Name and email required.")
+        if st.session_state.subscribers:
+            st.dataframe(pd.DataFrame(st.session_state.subscribers),use_container_width=True,hide_index=True)
+        else: st.info("No subscribers yet.")
+    with t3:
+        subs=st.session_state.subscribers
+        pc=len([s for s in subs if "Premium" in s.get("Plan","")])
+        c1,c2,c3,c4=st.columns(4)
+        c1.metric("Total",len(subs)); c2.metric("Premium",pc)
+        c3.metric("Monthly",f"${pc*15}"); c4.metric("Annual",f"${pc*15*12}")
+        st.markdown("---\n**🔗 Links**")
+        st.markdown("- [Streamlit Cloud](https://share.streamlit.io)\n- [GitHub](https://github.com/sparroxhalo-stack/ai-forex-analyzer)\n- [Anthropic Console](https://console.anthropic.com)")
