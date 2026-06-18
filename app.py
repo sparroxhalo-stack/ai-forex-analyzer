@@ -29,10 +29,18 @@ body,.main{background:#0d1117;color:#e6edf3}
 .grade-b{background:linear-gradient(90deg,#9e6a03,#d4a017);color:#fff;border-radius:8px;padding:3px 12px;font-size:14px;font-weight:900}
 .grade-c{background:linear-gradient(90deg,#b94040,#da3633);color:#fff;border-radius:8px;padding:3px 12px;font-size:14px;font-weight:900}
 @media(max-width:768px){
-  .block-container{padding:0.5rem !important}
+  .block-container{padding:0.5rem 0.5rem 70px 0.5rem !important}
   .stTabs [data-baseweb="tab"]{padding:5px 7px !important;font-size:10px !important}
   h1{font-size:20px !important}
+  .stButton button{min-height:46px !important;font-size:14px !important}
+  .card,.login-box,.tier-box{padding:14px !important}
 }
+.sticky-bar{position:fixed;bottom:0;left:0;right:0;background:#161b22;
+  border-top:1px solid #30363d;padding:8px 10px;z-index:999;
+  display:flex;gap:8px;justify-content:space-around}
+.sticky-bar a{color:#8b949e;text-decoration:none;font-size:11px;text-align:center}
+.compact-toggle{background:#161b22;border:1px solid #30363d;border-radius:8px;
+  padding:6px 12px;font-size:12px;color:#8b949e;cursor:pointer}
 </style>
 """, unsafe_allow_html=True)
 
@@ -146,7 +154,7 @@ def login_page():
             <span style='background:linear-gradient(90deg,#ffd200,#ff8c00);color:#000;
             border-radius:20px;padding:5px 16px;font-weight:700'>🎁 48 Hours FREE — Full Access</span>
             </div>""",unsafe_allow_html=True)
-            st.markdown("- ✅ All 10 assets incl. Gold, Bitcoin, EUR/USD\n- ✅ Quality-filtered signals (aims for 70%+)\n- ✅ Signal Grade A/B/C + Market Condition\n- ✅ Session timing + Correlation warnings\n- ✅ Auto Trade Tickets + Position Sizing")
+            st.markdown("- ✅ All 16 assets incl. Gold, Silver, Bitcoin, Ethereum, EUR/USD\n- ✅ Quality-filtered signals (aims for 70%+)\n- ✅ Signal Grade A/B/C + Market Condition\n- ✅ Session timing + Correlation warnings\n- ✅ Auto Trade Tickets + Position Sizing")
             te=st.text_input("Email",key="t_em",placeholder="you@email.com")
             tn=st.text_input("Name",key="t_nm",placeholder="First name")
             if st.button("🚀 Start Free Trial",use_container_width=True,type="primary",key="t_btn"):
@@ -199,13 +207,19 @@ SPECIALISTS={
 ALL_PAIRS={
     "Gold (XAU/USD)":"GC=F","Bitcoin":"BTC-USD","EUR/USD":"EURUSD=X",
     "GBP/USD":"GBPUSD=X","USD/JPY":"USDJPY=X","AUD/USD":"AUDUSD=X",
-    "USD/CHF":"USDCHF=X","USD/CAD":"USDCAD=X","NASDAQ":"^IXIC","S&P 500":"^GSPC",
+    "USD/CHF":"USDCHF=X","USD/CAD":"USDCAD=X","NZD/USD":"NZDUSD=X",
+    "EUR/JPY":"EURJPY=X","GBP/JPY":"GBPJPY=X","AUD/JPY":"AUDJPY=X",
+    "Silver (XAG/USD)":"SI=F","Ethereum":"ETH-USD",
+    "NASDAQ":"^IXIC","S&P 500":"^GSPC",
 }
 # Correlated pairs — warning when both signal same direction
 CORRELATIONS=[
-    (["EUR/USD","GBP/USD","AUD/USD"],"USD pairs — same USD exposure"),
+    (["EUR/USD","GBP/USD","AUD/USD","NZD/USD"],"USD pairs — same USD exposure"),
     (["USD/JPY","USD/CHF","USD/CAD"],"USD pairs — same USD exposure"),
+    (["EUR/JPY","GBP/JPY","AUD/JPY"],"JPY cross pairs — same JPY exposure"),
+    (["Gold (XAU/USD)","Silver (XAG/USD)"],"Precious metals — move together"),
     (["Gold (XAU/USD)","Bitcoin"],"Safe haven/risk assets — correlated in risk-off"),
+    (["Bitcoin","Ethereum"],"Crypto majors — highly correlated"),
 ]
 FREE_PAIRS=dict(list(ALL_PAIRS.items())[:5])
 pairs=ALL_PAIRS if pro else FREE_PAIRS
@@ -958,7 +972,12 @@ if pg=="Dashboard":
     <div style='font-size:22px;font-weight:900'>📊 Sparro FX AI</div>
     <div style='color:#8b949e;font-size:12px'>🕐 {now}</div>
     </div>""",unsafe_allow_html=True)
-    if not pro: st.warning("🔒 Free plan — Gold, BTC, EUR/USD + 2 pairs. Upgrade for all 10.")
+    if not pro: st.warning(f"🔒 Free plan — {', '.join(list(FREE_PAIRS.keys()))}. Upgrade for all {len(ALL_PAIRS)} assets.")
+
+    # Mobile sticky quick-action bar
+    st.markdown("""<div class='sticky-bar'>
+    <div>⚡<br>Pulse</div><div>👁️<br>Watch</div><div>🎫<br>Tickets</div><div>📓<br>Journal</div>
+    </div>""",unsafe_allow_html=True)
 
     if pro:
         with st.expander("📰 Daily Market Briefing + Risk Warning",expanded=False):
@@ -974,7 +993,7 @@ if pg=="Dashboard":
             border-left:4px solid #00c6ff;font-size:14px;line-height:1.8'>
             {brief.replace(chr(10),"<br>")}</div>""",unsafe_allow_html=True)
 
-    t1,t2,t3,t4,t5=st.tabs(["⚡ Pulse","📊 Scanner","🏆 Trade of Day","🔬 Deep Analysis","🗞️ News Trading"])
+    t1,t2,t3,t4,t5,t6=st.tabs(["⚡ Pulse","👁️ Watchlist","📊 Scanner","🏆 Trade of Day","🔬 Deep Analysis","🗞️ News Trading"])
 
     # ── PULSE ──────────────────────────────────────────────────────────────────
     with t1:
@@ -987,9 +1006,11 @@ if pg=="Dashboard":
 
         if not pro: st.error("🔒 Upgrade to access Pulse Signals.")
         else:
-            rc,rb=st.columns([3,1])
+            rc,rb,rv=st.columns([2,1,1])
             with rb:
                 if st.button("🔄 Refresh",use_container_width=True,key="pulse_ref"): st.rerun()
+            with rv:
+                compact=st.toggle("Compact",value=False,key="pulse_compact")
             with rc: st.caption(f"Scan: {datetime.datetime.now().strftime('%H:%M:%S')}")
 
             with st.spinner("Scanning and applying quality filters..."):
@@ -1087,6 +1108,27 @@ if pg=="Dashboard":
                     spec_border=f"border-top:3px solid {spec_col};" if spec else ""
                     spec_tag=f"{spec_icon} " if spec else ""
 
+                    if compact:
+                        # Condensed single-line mobile-friendly card
+                        st.markdown(f"""<div style='background:{bg};border:2px solid {brd};
+                        {spec_border}border-radius:12px;padding:12px 14px;margin-bottom:8px'>
+                        <div style='display:flex;justify-content:space-between;align-items:center'>
+                          <div>
+                            <span style='font-size:15px;font-weight:900;color:{brd}'>{spec_tag}{icon} {p["sig"]}</span>
+                            &nbsp;<span class='{p["grade_cls"]}' style='font-size:11px'>{p["grade"]}</span>
+                            <div style='font-size:16px;font-weight:700;color:#e6edf3'>{p["name"]}</div>
+                          </div>
+                          <div style='text-align:right'>
+                            <div style='font-size:22px;font-weight:900;color:{cfc}'>{p["conf"]}%</div>
+                            <div style='font-size:10px;color:#8b949e'>Entry {round(p["entry"],4)}</div>
+                          </div>
+                        </div></div>""",unsafe_allow_html=True)
+                        if st.button(f"🎫 Ticket — {p['name']}",key=f"atk_{idx}",use_container_width=True):
+                            ok=auto_ticket(p["name"],p["sig"],p["conf"],p["entry"],
+                                          p["sl"],p["tp1"],p["tp2"],p["tp3"],p["grade"],"Pulse")
+                            st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
+                        continue
+
                     st.markdown(f"""<div style='background:{bg};border:2px solid {brd};
                     {spec_border}border-radius:14px;padding:16px;margin-bottom:12px;
                     box-shadow:0 0 14px {brd}33'>
@@ -1153,8 +1195,69 @@ if pg=="Dashboard":
                             chart(p["sym"],p["name"],p["sig"],p["entry"],p["sl"],
                                   p["tp1"],p["tp2"],ckey=f"pc_{idx}",asset_name=p["name"])
 
-    # ── SCANNER ────────────────────────────────────────────────────────────────
+    # ── WATCHLIST ──────────────────────────────────────────────────────────────
     with t2:
+        st.markdown("### 👁️ Watchlist — Setups Building")
+        st.markdown("""<div style='color:#8b949e;font-size:13px;margin-bottom:14px'>
+        These haven't fired a full signal yet, but strategies are starting to align.
+        Not trade calls — things worth watching so you always have something on your radar.</div>""",unsafe_allow_html=True)
+
+        if not pro:
+            st.error("🔒 Upgrade to access the Watchlist.")
+        else:
+            with st.spinner("Scanning for building setups..."):
+                watch=[]
+                for name,sym in ALL_PAIRS.items():
+                    res,conf,sig,df_raw=run_strats(sym,asset_name=name)
+                    if df_raw is None: continue
+                    b=sum(1 for s,_ in res.values() if s=="BUY")
+                    s=sum(1 for s,_ in res.values() if s=="SELL")
+                    lean="BUY" if b>s else "SELL" if s>b else None
+                    agree=max(b,s)
+                    # Only show items NOT already a full Pulse signal (2 or 3 out of 6 = building)
+                    if lean and agree in (2,3):
+                        candle_ok,_=check_candle_quality(df_raw)
+                        atr_ok,_=check_atr_filter(df_raw)
+                        session_ok,session_msg=get_session_status(name)
+                        cond,cond_icon,cond_color,cond_msg=get_market_condition(df_raw)
+                        filters_passing=sum([candle_ok,atr_ok,session_ok])
+                        watch.append({"name":name,"sym":sym,"lean":lean,"agree":agree,
+                            "filters_passing":filters_passing,"cond":cond,"cond_icon":cond_icon,
+                            "cond_color":cond_color,"is_spec":name in SPECIALISTS})
+                watch.sort(key=lambda x:(x["agree"],x["filters_passing"],x["is_spec"]),reverse=True)
+
+            if not watch:
+                st.markdown("""<div style='background:#161b22;border:1px solid #30363d;
+                border-radius:14px;padding:30px;text-align:center'>
+                <div style='font-size:30px'>🔭</div>
+                <div style='color:#8b949e;margin-top:8px'>Nothing building right now — markets are quiet or already firing on Pulse.</div>
+                </div>""",unsafe_allow_html=True)
+            else:
+                for w in watch[:10]:
+                    ib=w["lean"]=="BUY"
+                    col="#3fb950" if ib else "#f85149"
+                    icon="👀"
+                    spec=SPECIALISTS.get(w["name"],{})
+                    spec_icon=spec.get("icon","")
+                    progress_pct=round(w["agree"]/6*100)
+                    st.markdown(f"""<div style='background:#161b22;border:1px solid {col}55;
+                    border-left:4px solid {col};border-radius:10px;padding:12px 14px;margin-bottom:8px'>
+                    <div style='display:flex;justify-content:space-between;align-items:center'>
+                      <div>
+                        <b>{icon} {spec_icon} {w["name"]}</b>
+                        <span style='color:{col};font-weight:700;margin-left:8px'>{w["lean"]} leaning</span>
+                      </div>
+                      <span style='color:#8b949e;font-size:12px'>{w["agree"]}/6 strategies · {w["filters_passing"]}/3 filters ready</span>
+                    </div>
+                    <div style='background:#0d1117;border-radius:5px;height:6px;margin-top:8px;overflow:hidden'>
+                      <div style='background:{col};height:100%;width:{progress_pct}%'></div>
+                    </div>
+                    <div style='font-size:11px;color:{w["cond_color"]};margin-top:6px'>{w["cond_icon"]} {w["cond"]} market</div>
+                    </div>""",unsafe_allow_html=True)
+                st.caption("💡 When agreement reaches 4+/6 with filters passing, it'll appear on the Pulse tab as a real signal.")
+
+    # ── SCANNER ────────────────────────────────────────────────────────────────
+    with t3:
         st.markdown("### 📊 Market Scanner")
         st.caption("Specialists first. Grade shown for signal quality.")
         rows=[]; prog=st.progress(0); items=list(pairs.items())
@@ -1187,7 +1290,7 @@ if pg=="Dashboard":
         st.dataframe(sc,use_container_width=True,hide_index=True)
 
     # ── TRADE OF THE DAY ───────────────────────────────────────────────────────
-    with t3:
+    with t4:
         st.markdown("### 🏆 Trade of the Day")
         st.caption("Best quality setup after all filters applied.")
         if not pro: st.error("🔒 Premium only.")
@@ -1235,7 +1338,7 @@ if pg=="Dashboard":
                 chart(best["sym"],best["name"],best["sig"],entry,sl,tp1,tp2,ckey="totd_chart",asset_name=best["name"])
 
     # ── DEEP ANALYSIS ──────────────────────────────────────────────────────────
-    with t4:
+    with t5:
         st.markdown("### 🔬 Deep Analysis")
         if not pro: st.error("🔒 Premium only.")
         else:
@@ -1334,7 +1437,7 @@ if pg=="Dashboard":
                 chart(sym,sel,sig,entry,sl,tp1,tp2,ckey=f"deep_{sel}",asset_name=sel)
 
     # ── NEWS TRADING ───────────────────────────────────────────────────────────
-    with t5:
+    with t6:
         st.markdown("### 🗞️ News Trading")
         if not pro: st.error("🔒 Premium only.")
         else:
@@ -1694,7 +1797,7 @@ elif pg=="Pricing":
     with c2:
         st.markdown("""<div class='tier-box gold'>
         <h3>⚡ Premium</h3><h2>$15/mo</h2><hr>
-        ✅ All 10 assets<br>
+        ✅ All 16 assets<br>
         ✅ 🥇 Gold · ₿ BTC · € EUR/USD Specialist Analysis<br>
         ✅ <b>Grade A/B/C quality filtering</b><br>
         ✅ Candle quality · ATR · Weekly trend · Session filter<br>
