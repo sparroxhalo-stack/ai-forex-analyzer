@@ -6,6 +6,7 @@ import numpy as np
 import datetime
 import requests
 import hashlib
+import secrets as _secrets
 
 st.set_page_config(page_title="Sparro FX AI", layout="wide", page_icon="🚀")
 
@@ -58,23 +59,43 @@ def play_sound(sig):
     }}catch(e){{}}}})()</script>""",unsafe_allow_html=True)
 
 # ─── AUTH ──────────────────────────────────────────────────────────────────────
-def _tok(at,em,ts):
-    return hashlib.sha256(f"{at}|{em}|{ts}|fx2024".encode()).hexdigest()[:16]
+def _tok(at,em,ts,did=""):
+    return hashlib.sha256(f"{at}|{em}|{ts}|{did}|fx2024".encode()).hexdigest()[:16]
+
 def save_session(at,em,ts=""):
-    st.query_params["s"]=f"{at}|{em}|{ts}|{_tok(at,em,ts)}"
+    # device_id is generated once per browser session and stored in session_state
+    # This means even if someone shares the URL, the token won't validate on a different device
+    did=st.session_state.get("_device_id","")
+    if not did:
+        did=_secrets.token_hex(8)
+        st.session_state["_device_id"]=did
+    tok=_tok(at,em,ts,did)
+    # We store the device_id in the URL so the same browser can reload without re-login
+    st.query_params["s"]=f"{at}|{em}|{ts}|{tok}|{did}"
+
 def load_session():
     try:
         raw=st.query_params.get("s","")
         if not raw: return None
-        at,em,ts,tok=raw.split("|")
-        if tok!=_tok(at,em,ts): return None
+        parts=raw.split("|")
+        # Support both old format (4 parts) and new format (5 parts with device_id)
+        if len(parts)==4:
+            at,em,ts,tok=parts; did=""
+        elif len(parts)==5:
+            at,em,ts,tok,did=parts
+        else: return None
+        if tok!=_tok(at,em,ts,did): return None
+        # Restore device_id into session so future saves stay consistent
+        if did: st.session_state["_device_id"]=did
         return {"account_type":at,"email":em,
                 "trial_start":datetime.datetime.fromisoformat(ts) if ts else None}
     except: return None
+
 def clear_session(): st.query_params.clear()
 
 DEFS={"logged_in":False,"account_type":None,"trial_start":None,"email":"",
-      "journal":[],"subscribers":[],"sig_history":[],"page":"Dashboard","_loaded":False}
+      "journal":[],"subscribers":[],"sig_history":[],"page":"Dashboard",
+      "_loaded":False,"_device_id":""}
 for k,v in DEFS.items():
     if k not in st.session_state: st.session_state[k]=v
 if not st.session_state._loaded:
@@ -1066,12 +1087,13 @@ if pg=="Dashboard":
                 grade_counts={"A":sum(1 for h in hits if h["grade"]=="A"),
                               "B":sum(1 for h in hits if h["grade"]=="B"),
                               "C":sum(1 for h in hits if h["grade"]=="C")}
+                ga_tag = f"<span class='grade-a'>A x{grade_counts['A']}</span>" if grade_counts["A"] else ""
+                gb_tag = f"<span class='grade-b'>B x{grade_counts['B']}</span>" if grade_counts["B"] else ""
+                gc_tag = f"<span class='grade-c'>C x{grade_counts['C']}</span>" if grade_counts["C"] else ""
                 st.markdown(f"""<div style='background:#161b22;border-radius:10px;padding:10px 14px;
                 margin-bottom:12px;display:flex;gap:16px;align-items:center'>
                 <span style='color:#8b949e;font-size:13px'>{len(hits)} signal(s):</span>
-                {"<span class='grade-a'>A x"+str(grade_counts["A"])+"</span>" if grade_counts["A"] else ""}
-                {"<span class='grade-b'>B x"+str(grade_counts["B"])+"</span>" if grade_counts["B"] else ""}
-                {"<span class='grade-c'>C x"+str(grade_counts["C"])+"</span>" if grade_counts["C"] else ""}
+                {ga_tag}{gb_tag}{gc_tag}
                 <span style='color:#8b949e;font-size:12px;margin-left:auto'>Specialists shown first</span>
                 </div>""",unsafe_allow_html=True)
 
