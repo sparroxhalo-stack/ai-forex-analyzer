@@ -1584,11 +1584,12 @@ elif pg=="Timeframes":
             for name,(s,reason) in res.items():
                 col="#238636" if s=="BUY" else "#da3633" if s=="SELL" else "#9e6a03"
                 dot="🟢" if s=="BUY" else "🔴" if s=="SELL" else "🟡"
+                sr=reason.replace("<","&lt;").replace(">","&gt;")
                 st.markdown(f"""<div style='background:#161b22;border-radius:8px;padding:10px 12px;
                 margin-bottom:6px;border-left:3px solid {col}'>
                 <b>{dot} {name}</b>
                 <span style='background:{col};color:#fff;padding:1px 8px;border-radius:7px;font-size:11px;margin-left:8px'>{s}</span>
-                <br><small style='color:#8b949e'>{reason}</small></div>""",unsafe_allow_html=True)
+                <br><small style='color:#8b949e'>{sr}</small></div>""",unsafe_allow_html=True)
             if df_tf is not None and len(df_tf)>10:
                 fig=go.Figure()
                 if "Open" in df_tf.columns:
