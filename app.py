@@ -764,6 +764,89 @@ def get_setup(sym,direction):
         else:                  return p,p+risk,p-risk,p-risk*2,p-risk*3,atr
     except: return None,None,None,None,None,None
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRECISION ENTRY TOOLS — for small accounts wanting tighter, structural risk
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_structure_sl(sym,direction,entry,atr):
+    """
+    Structure-based stop loss: uses the nearest real swing high/low instead
+    of a flat ATR multiple. Often tighter than ATR×1.5, but anchored to an
+    actual price level that would invalidate the trade if broken — not an
+    arbitrary distance. Falls back to the ATR stop if no clean swing is found
+    or if structure stop would be tighter than 0.5×ATR (too tight to be real).
+    """
+    try:
+        df=get_df(sym,"1mo","1h")
+        if df is None or len(df)<20:
+            df=get_df(sym,"3mo","1d")
+        if df is None or len(df)<10: return None,"No data for structure stop"
+        h=df["High"]; l=df["Low"]
+        lookback=min(40,len(df)-1)
+        min_dist=atr*0.5  # structure stop must be at least this far to be valid
+        if "BUY" in direction:
+            # nearest swing low below entry
+            recent_low=float(l.iloc[-lookback:].min())
+            if recent_low>=entry: return None,"No clean swing low found below entry"
+            dist=entry-recent_low
+            if dist<min_dist:
+                return None,f"Nearest swing low too close ({round(dist,5)}) — using ATR stop instead"
+            sl=recent_low-(atr*0.1)  # small buffer below the swing
+            return sl,f"Structure SL at swing low {round(recent_low,5)} (+buffer)"
+        else:
+            recent_high=float(h.iloc[-lookback:].max())
+            if recent_high<=entry: return None,"No clean swing high found above entry"
+            dist=recent_high-entry
+            if dist<min_dist:
+                return None,f"Nearest swing high too close ({round(dist,5)}) — using ATR stop instead"
+            sl=recent_high+(atr*0.1)
+            return sl,f"Structure SL at swing high {round(recent_high,5)} (+buffer)"
+    except Exception as e:
+        return None,f"Structure stop error: {e}"
+
+def get_entry_zone(sym,direction,entry,atr):
+    """
+    Instead of one exact entry price, gives a realistic zone to enter within.
+    This lets a person scale in or wait for a slightly better price rather
+    than chasing the market price the instant the signal fires.
+    Zone width is a fraction of ATR — tight enough to stay relevant, wide
+    enough to be achievable.
+    """
+    try:
+        zone_width=atr*0.15
+        if "BUY" in direction:
+            zone_low=entry-zone_width; zone_high=entry
+        else:
+            zone_low=entry; zone_high=entry+zone_width
+        return zone_low,zone_high
+    except: return entry,entry
+
+def get_account_warning(balance,entry,sl,risk_pct,is_forex=True):
+    """
+    Tells a small-account trader whether this setup is actually safely
+    tradeable at their balance and risk %, accounting for typical spread
+    cost eating into a small stop distance.
+    """
+    try:
+        risk_amt=balance*risk_pct/100
+        sl_distance=abs(entry-sl)
+        if is_forex:
+            pips=sl_distance*10000
+            typical_spread_pips=1.5  # rough typical spread, varies by broker/pair
+            if pips<=0: return "error","Invalid stop distance"
+            spread_cost_pct=(typical_spread_pips/pips)*100
+            min_lot_value=risk_amt/(pips*10) if pips>0 else 0
+            if spread_cost_pct>25:
+                return "warning",f"⚠️ Stop is only {round(pips,1)} pips — spread could eat {round(spread_cost_pct)}% of your risk. Consider a less tight setup or a bigger account."
+            if balance<100 and min_lot_value<0.01:
+                return "warning","⚠️ Risk amount is very small for this stop distance — position size may round to the broker's minimum lot, increasing effective risk %."
+            return "ok",f"✅ Spread impact ~{round(spread_cost_pct)}% of risk — acceptable for this account size."
+        else:
+            if sl_distance<=0: return "error","Invalid stop distance"
+            return "ok","✅ Setup looks tradeable for this account size."
+    except Exception as e:
+        return "error",f"Account check error: {e}"
+
 def get_position_size(balance,risk_pct,sl,entry,is_forex=True):
     """Auto position sizing based on signal grade and ATR."""
     try:
@@ -1453,6 +1536,46 @@ if pg=="Dashboard":
                 is_forex="USD" in sel or "EUR" in sel or "GBP" in sel or "JPY" in sel or "AUD" in sel or "CHF" in sel or "CAD" in sel
                 risk_adj=2.0 if grade=="A" else 1.5 if grade=="B" else 1.0
                 st.info(f"💡 **Suggested risk:** {risk_adj}% for Grade {grade} signal — adjust in Risk Calculator")
+
+                st.markdown("#### 🎯 Precision Entry Tools — for small accounts")
+                struct_sl,struct_msg=get_structure_sl(sym,sig,entry,atr)
+                zone_low,zone_high=get_entry_zone(sym,sig,entry,atr)
+                pc1,pc2=st.columns(2)
+                with pc1:
+                    st.markdown(f"""<div class='card' style='border-left:4px solid #58a6ff'>
+                    <b>📍 Entry Zone</b><br><br>
+                    Instead of chasing one exact price, aim to enter between:<br>
+                    <b style='color:#58a6ff;font-size:16px'>{round(min(zone_low,zone_high),5)} – {round(max(zone_low,zone_high),5)}</b><br><br>
+                    <span style='color:#8b949e;font-size:12px'>Waiting for price inside this zone avoids chasing and improves your average entry.</span>
+                    </div>""",unsafe_allow_html=True)
+                with pc2:
+                    if struct_sl:
+                        risk_atr=abs(entry-sl); risk_struct=abs(entry-struct_sl)
+                        tighter=risk_struct<risk_atr
+                        st.markdown(f"""<div class='card' style='border-left:4px solid #ffd700'>
+                        <b>🧱 Structure-Based SL</b><br><br>
+                        <b style='color:#ffd700;font-size:16px'>{round(struct_sl,5)}</b>
+                        {" &nbsp;<span style='color:#3fb950;font-size:11px'>(tighter than ATR stop)</span>" if tighter else " <span style='color:#8b949e;font-size:11px'>(wider than ATR stop)</span>"}<br><br>
+                        <span style='color:#8b949e;font-size:12px'>{struct_msg}</span>
+                        </div>""",unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""<div class='card' style='border-left:4px solid #8b949e'>
+                        <b>🧱 Structure-Based SL</b><br><br>
+                        <span style='color:#8b949e;font-size:13px'>{struct_msg}</span><br><br>
+                        <span style='color:#8b949e;font-size:12px'>Using the standard ATR-based stop instead.</span>
+                        </div>""",unsafe_allow_html=True)
+
+                st.markdown("##### 💰 Is this tradeable on your account?")
+                ac1,ac2=st.columns([2,1])
+                with ac2:
+                    small_bal=st.number_input("Your balance ($)",min_value=10.0,value=200.0,key="deep_small_bal")
+                final_sl=struct_sl if struct_sl else sl
+                status,msg=get_account_warning(small_bal,entry,final_sl,risk_adj,is_forex)
+                with ac1:
+                    if status=="ok": st.success(msg)
+                    elif status=="warning": st.warning(msg)
+                    else: st.error(msg)
+
                 if st.button("🎫 Auto Ticket",key="deep_tk",use_container_width=True):
                     ok=auto_ticket(sel,sig,conf,entry,sl,tp1,tp2,tp3,grade,"Deep Analysis")
                     st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
@@ -1802,6 +1925,18 @@ elif pg=="Risk":
         if rp<=2: st.success("✅ Conservative — recommended")
         elif rp<=5: st.warning("⚠️ Moderate")
         else: st.error("🚨 High risk — reduce size")
+
+    st.markdown("---")
+    st.markdown("#### 🔍 Small Account Check")
+    typical_spread=1.5
+    if slp>0:
+        spread_pct=(typical_spread/slp)*100
+        if bal<200:
+            st.warning(f"💡 With a ${bal:.0f} account, spread costs roughly **{round(spread_pct)}%** of this trade's risk. For small accounts, prefer setups with stops of 15+ pips where spread matters less — use the **Structure SL** shown in Deep Analysis for tighter, more precise stops anchored to real price levels rather than a flat distance.")
+        elif spread_pct>25:
+            st.info(f"ℹ️ This stop ({slp:.0f} pips) is tight — spread is ~{round(spread_pct)}% of your risk. Still workable on a larger account, but check the Structure SL option in Deep Analysis for an alternative.")
+        else:
+            st.success(f"✅ Spread impact is low (~{round(spread_pct)}%) relative to this stop size — efficient risk usage.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PRICING
