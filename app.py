@@ -36,10 +36,6 @@ body,.main{background:#0d1117;color:#e6edf3}
   .stButton button{min-height:46px !important;font-size:14px !important}
   .card,.login-box,.tier-box{padding:14px !important}
 }
-.sticky-bar{position:fixed;bottom:0;left:0;right:0;background:#161b22;
-  border-top:1px solid #30363d;padding:8px 10px;z-index:999;
-  display:flex;gap:8px;justify-content:space-around}
-.sticky-bar a{color:#8b949e;text-decoration:none;font-size:11px;text-align:center}
 .compact-toggle{background:#161b22;border:1px solid #30363d;border-radius:8px;
   padding:6px 12px;font-size:12px;color:#8b949e;cursor:pointer}
 </style>
@@ -878,16 +874,59 @@ def auto_ticket(asset,sig,conf,entry,sl,tp1,tp2,tp3,grade,src="Auto"):
     dup=[t for t in st.session_state.journal
          if t.get("Asset")==asset and t.get("Date")==today and t.get("Signal")==sig]
     if dup: return False
+    now_iso=datetime.datetime.now().isoformat()
     st.session_state.journal.append({
         "Date":today,"Time":datetime.datetime.now().strftime("%H:%M"),
         "Asset":asset,"Signal":sig,"Grade":grade,"Entry":round(entry,5),"SL":round(sl,5),
         "TP1":round(tp1,5),"TP2":round(tp2,5),"TP3":round(tp3,5),
-        "Confidence":conf,"Result":"Open","Source":src})
+        "Confidence":conf,"Result":"Open","Source":src,"CreatedAt":now_iso})
     st.session_state.sig_history.append({
         "DateTime":datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "Asset":asset,"Signal":sig,"Grade":grade,"Confidence":conf,
         "Entry":round(entry,5),"Result":"Pending"})
     return True
+
+# ─── SIGNAL CARD HELPERS ───────────────────────────────────────────────────────
+def calc_rr(entry,sl,tp1):
+    """Calculate risk:reward ratio for display, e.g. '1:2'."""
+    try:
+        risk=abs(entry-sl); reward=abs(tp1-entry)
+        if risk<=0: return "—"
+        ratio=round(reward/risk,1)
+        return f"1:{ratio}"
+    except: return "—"
+
+def time_ago(scanned_at):
+    """Format a datetime as 'Xm ago' / 'Xh ago' for signal freshness."""
+    try:
+        delta=datetime.datetime.now()-scanned_at
+        mins=int(delta.total_seconds()/60)
+        if mins<1: return "just now"
+        if mins<60: return f"{mins}m ago"
+        hrs=mins//60
+        return f"{hrs}h ago"
+    except: return "just now"
+
+def build_one_liner(asset,sig,agreeing_strats,grade):
+    """
+    One tight plain-English sentence summarizing the setup, similar in spirit
+    to a single-paragraph signal reasoning. Built from our own real strategy
+    agreement data — not a templated guess.
+    """
+    direction="bullish" if "BUY" in sig else "bearish"
+    n=len(agreeing_strats)
+    lead=agreeing_strats[0] if agreeing_strats else "multiple signals"
+    conviction={"A":"high","B":"good","C":"moderate"}.get(grade,"moderate")
+    return f"{lead} is leading a {direction} case on {asset}, with {n} strategies in agreement — conviction rated {conviction} for this {grade}-grade setup."
+
+def build_copy_text(asset,sig,entry,sl,tp1,tp2,tp3,rr,grade):
+    """Plain text block a person can copy and paste into MT4/MT5 manually."""
+    return (f"{asset} — {sig} (Grade {grade})\n"
+            f"Entry: {round(entry,5)}\n"
+            f"Stop Loss: {round(sl,5)}\n"
+            f"TP1: {round(tp1,5)}  TP2: {round(tp2,5)}  TP3: {round(tp3,5)}\n"
+            f"Risk:Reward {rr}\n"
+            f"— Sparro FX AI")
 
 # ─── CORRELATION CHECK ──────────────────────────────────────────────────────────
 def check_correlations(active_signals):
@@ -1078,10 +1117,19 @@ if pg=="Dashboard":
     </div>""",unsafe_allow_html=True)
     if not pro: st.warning(f"🔒 Free plan — {', '.join(list(FREE_PAIRS.keys()))}. Upgrade for all {len(ALL_PAIRS)} assets.")
 
-    # Mobile sticky quick-action bar
-    st.markdown("""<div class='sticky-bar'>
-    <div>⚡<br>Pulse</div><div>👁️<br>Watch</div><div>🎫<br>Tickets</div><div>📓<br>Journal</div>
-    </div>""",unsafe_allow_html=True)
+    # Mobile quick-action bar — real buttons that actually navigate
+    qa1,qa2,qa3=st.columns(3)
+    with qa1:
+        if st.button("🎫 Tickets",key="qa_tickets",use_container_width=True):
+            st.session_state.page="Tickets"; st.rerun()
+    with qa2:
+        if st.button("📓 Journal",key="qa_journal",use_container_width=True):
+            st.session_state.page="Journal"; st.rerun()
+    with qa3:
+        if st.button("💰 Risk Calc",key="qa_risk",use_container_width=True):
+            st.session_state.page="Risk"; st.rerun()
+    st.caption("⚡ Pulse and 👁️ Watchlist are the tabs just below")
+    st.markdown("<div style='height:4px'></div>",unsafe_allow_html=True)
 
     if pro:
         with st.expander("📰 Daily Market Briefing + Risk Warning",expanded=False):
@@ -1097,7 +1145,7 @@ if pg=="Dashboard":
             border-left:4px solid #00c6ff;font-size:14px;line-height:1.8'>
             {brief.replace(chr(10),"<br>")}</div>""",unsafe_allow_html=True)
 
-    t1,t2,t3,t4,t5,t6=st.tabs(["⚡ Pulse","👁️ Watchlist","📊 Scanner","🏆 Trade of Day","🔬 Deep Analysis","🗞️ News Trading"])
+    t1,t1b,t2,t3,t4,t5,t6=st.tabs(["⚡ Pulse","🏃 Fast Pulse (M15)","👁️ Watchlist","📊 Scanner","🏆 Trade of Day","🔬 Deep Analysis","🗞️ News Trading"])
 
     # ── PULSE ──────────────────────────────────────────────────────────────────
     with t1:
@@ -1146,7 +1194,7 @@ if pg=="Dashboard":
                         "weekly_ok":weekly_ok,"weekly_msg":weekly_msg,
                         "session_ok":session_ok,"session_msg":session_msg,
                         "cond":cond,"cond_icon":cond_icon,"cond_color":cond_color,"cond_msg":cond_msg,
-                        "is_spec":name in SPECIALISTS})
+                        "is_spec":name in SPECIALISTS,"scanned_at":datetime.datetime.now()})
                 hits.sort(key=lambda x:(x["is_spec"],x["grade"]=="A",x["grade"]=="B",x["conf"]),reverse=True)
                 # Correlation check
                 corr_warnings=check_correlations(active_assets)
@@ -1212,6 +1260,11 @@ if pg=="Dashboard":
 
                     spec_border=f"border-top:3px solid {spec_col};" if spec else ""
                     spec_tag=f"{spec_icon} " if spec else ""
+                    rr=calc_rr(p["entry"],p["sl"],p["tp1"])
+                    tago=time_ago(p["scanned_at"])
+                    one_liner=build_one_liner(p["name"],p["sig"],agr,p["grade"])
+                    copy_text=build_copy_text(p["name"],p["sig"],p["entry"],p["sl"],
+                                               p["tp1"],p["tp2"],p["tp3"],rr,p["grade"])
 
                     if compact:
                         # Condensed single-line mobile-friendly card
@@ -1221,6 +1274,7 @@ if pg=="Dashboard":
                           <div>
                             <span style='font-size:15px;font-weight:900;color:{brd}'>{spec_tag}{icon} {p["sig"]}</span>
                             &nbsp;<span class='{p["grade_cls"]}' style='font-size:11px'>{p["grade"]}</span>
+                            &nbsp;<span style='color:#8b949e;font-size:10px'>RR {rr} · {tago}</span>
                             <div style='font-size:16px;font-weight:700;color:#e6edf3'>{p["name"]}</div>
                           </div>
                           <div style='text-align:right'>
@@ -1244,6 +1298,7 @@ if pg=="Dashboard":
                           {"&nbsp;<span class='smc-badge'>SMC</span>" if smc_on else ""}
                         </div>
                         <div style='font-size:19px;font-weight:700;color:#e6edf3'>{p["name"]}</div>
+                        <div style='font-size:11px;color:#8b949e;margin-top:2px'>🕐 {tago} &nbsp;|&nbsp; RR <b style='color:#ffd700'>{rr}</b></div>
                         <div style='font-size:11px;color:{mtf_col};margin-top:3px'>MTF: {p["mtf_sig"]} — {p["mtf_note"]}</div>
                         <div style='font-size:11px;color:{p["cond_color"]};margin-top:2px'>{p["cond_icon"]} {p["cond"]} market — {p["cond_msg"]}</div>
                       </div>
@@ -1253,6 +1308,8 @@ if pg=="Dashboard":
                         <div style='font-size:11px;color:#8b949e;margin-top:4px'>{p["grade_action"]}</div>
                       </div>
                     </div>
+                    <div style='font-size:12px;color:#c9d1d9;background:#00000033;border-radius:8px;
+                    padding:8px 10px;margin-bottom:10px;line-height:1.5'>💬 {one_liner}</div>
                     <div style='display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:8px'>
                       <div style='background:#00000044;border-radius:6px;padding:7px;text-align:center'>
                         <div style='font-size:9px;color:#8b949e'>ENTRY</div>
@@ -1284,13 +1341,17 @@ if pg=="Dashboard":
                     <div style='font-size:11px;color:#8b949e'>✅ {" · ".join(agr)}</div>
                     </div>""",unsafe_allow_html=True)
 
-                    ca,cb=st.columns(2)
+                    ca,cb,cc=st.columns(3)
                     with ca:
                         if st.button(f"🎫 Auto Ticket",key=f"atk_{idx}",use_container_width=True):
                             ok=auto_ticket(p["name"],p["sig"],p["conf"],p["entry"],
                                           p["sl"],p["tp1"],p["tp2"],p["tp3"],p["grade"],"Pulse")
                             st.success("✅ Ticket created! Go to Tickets.") if ok else st.warning("Already ticketed today.")
                     with cb:
+                        with st.popover("📋 Copy"):
+                            st.code(copy_text,language=None)
+                            st.caption("Tap and hold the box above to copy, then paste into MT4/MT5.")
+                    with cc:
                         with st.expander(f"📊 {p['name']}"):
                             # Quality filter detail
                             st.markdown(f"**Candle:** {p['candle_msg']}")
@@ -1299,6 +1360,100 @@ if pg=="Dashboard":
                             st.markdown(f"**Session:** {p['session_msg']}")
                             chart(p["sym"],p["name"],p["sig"],p["entry"],p["sl"],
                                   p["tp1"],p["tp2"],ckey=f"pc_{idx}",asset_name=p["name"])
+
+    # ── FAST PULSE (M15) ──────────────────────────────────────────────────────
+    with t1b:
+        st.markdown("""<div style='display:flex;align-items:center;margin-bottom:6px'>
+        <span class='pulse-dot' style='background:#ffa500'></span>
+        <span style='font-size:19px;font-weight:800'>Fast Pulse — 15 Minute</span></div>
+        <div style='color:#8b949e;font-size:13px;margin-bottom:6px'>
+        Higher-frequency, lower-conviction signals for active intraday trading.</div>""",unsafe_allow_html=True)
+
+        st.warning("⚠️ **Read this first:** M15 has limited price history, so EMA200, SMC Order Blocks/FVG and the Weekly Trend filter can't run reliably here. This feed uses a lighter 3-strategy check (EMA-short, RSI, Support/Resistance) and is capped at **Grade B** — never Grade A. Treat it as a faster, noisier feed alongside the main ⚡ Pulse, not a replacement for it.")
+
+        if not pro:
+            st.error("🔒 Upgrade to access Fast Pulse.")
+        else:
+            fr1,fr2=st.columns([3,1])
+            with fr2:
+                if st.button("🔄 Refresh",use_container_width=True,key="fastpulse_ref"): st.rerun()
+            with fr1: st.caption(f"Scan: {datetime.datetime.now().strftime('%H:%M:%S')}")
+
+            with st.spinner("Scanning M15 across all assets..."):
+                fast_hits=[]
+                for name,sym in ALL_PAIRS.items():
+                    res,conf,sig,df15,note=run_single_timeframe(sym,"M15",asset_name=name)
+                    if res is None or sig in ("WAIT","NO DATA","ERROR") or conf<67:
+                        continue
+                    entry=float(df15["Close"].iloc[-1]) if df15 is not None else None
+                    if entry is None: continue
+                    # Tighter, faster ATR for M15 (shorter period since data is limited)
+                    try:
+                        h15=df15["High"]; l15=df15["Low"]; c15=df15["Close"]
+                        tr15=pd.concat([h15-l15,(h15-c15.shift()).abs(),(l15-c15.shift()).abs()],axis=1).max(axis=1)
+                        atr15=float(tr15.rolling(14).mean().iloc[-1])
+                    except: atr15=None
+                    if not atr15 or atr15<=0: continue
+                    risk15=atr15*1.2
+                    if "BUY" in sig: sl15=entry-risk15; tp1_15=entry+risk15; tp2_15=entry+risk15*2
+                    else:            sl15=entry+risk15; tp1_15=entry-risk15; tp2_15=entry-risk15*2
+                    session_ok,session_msg=get_session_status(name)
+                    grade="B" if (conf>=83 and session_ok) else "C"
+                    fast_hits.append({"name":name,"sym":sym,"sig":sig,"conf":conf,"res":res,
+                        "entry":entry,"sl":sl15,"tp1":tp1_15,"tp2":tp2_15,"grade":grade,
+                        "session_ok":session_ok,"session_msg":session_msg,
+                        "is_spec":name in SPECIALISTS})
+                fast_hits.sort(key=lambda x:(x["is_spec"],x["grade"]=="B",x["conf"]),reverse=True)
+
+            if not fast_hits:
+                st.markdown("""<div style='background:#161b22;border:1px solid #30363d;
+                border-radius:14px;padding:30px;text-align:center'>
+                <div style='font-size:30px'>🏃</div>
+                <div style='color:#8b949e;margin-top:8px'>No M15 setups firing right now.</div>
+                </div>""",unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='color:#ffa500;font-weight:700;margin-bottom:10px'>⚡ {len(fast_hits)} fast signal(s) on M15</div>",unsafe_allow_html=True)
+                for fidx,f in enumerate(fast_hits):
+                    ib="BUY" in f["sig"]
+                    brd="#3fb950" if ib else "#f85149"
+                    icon="🚀" if ib else "📉"
+                    spec=SPECIALISTS.get(f["name"],{})
+                    spec_icon=spec.get("icon","")
+                    gc="grade-b" if f["grade"]=="B" else "grade-c"
+                    agr=[n for n,(s,_) in f["res"].items() if s==("BUY" if ib else "SELL")]
+                    st.markdown(f"""<div style='background:#161b22;border:2px solid {brd};
+                    border-radius:12px;padding:12px 14px;margin-bottom:8px'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>
+                      <div>
+                        <span style='font-size:16px;font-weight:900;color:{brd}'>{spec_icon} {icon} {f["sig"]}</span>
+                        &nbsp;<span class='{gc}' style='font-size:11px'>{f["grade"]}</span>
+                        <div style='font-size:16px;font-weight:700;color:#e6edf3'>{f["name"]} <span style='font-size:11px;color:#8b949e'>(M15)</span></div>
+                      </div>
+                      <div style='text-align:right'>
+                        <div style='font-size:22px;font-weight:900;color:{"#3fb950" if f["conf"]>=83 else "#ffd700"}'>{f["conf"]}%</div>
+                        <div style='font-size:10px;color:#8b949e'>{len(agr)}/3 agree</div>
+                      </div>
+                    </div>
+                    <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px'>
+                      <div style='background:#00000044;border-radius:6px;padding:6px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>ENTRY</div>
+                        <div style='font-size:11px;font-weight:700'>{round(f["entry"],4)}</div>
+                      </div>
+                      <div style='background:#00000044;border-radius:6px;padding:6px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>STOP</div>
+                        <div style='font-size:11px;font-weight:700;color:#f85149'>{round(f["sl"],4)}</div>
+                      </div>
+                      <div style='background:#00000044;border-radius:6px;padding:6px;text-align:center'>
+                        <div style='font-size:9px;color:#8b949e'>TP1</div>
+                        <div style='font-size:11px;font-weight:700;color:#3fb950'>{round(f["tp1"],4)}</div>
+                      </div>
+                    </div>
+                    <div style='font-size:11px;color:{"#3fb950" if f["session_ok"] else "#ffa500"}'>{f["session_msg"]}</div>
+                    </div>""",unsafe_allow_html=True)
+                    if st.button(f"🎫 Quick Ticket",key=f"fast_tk_{fidx}",use_container_width=True):
+                        ok=auto_ticket(f["name"],f["sig"],f["conf"],f["entry"],f["sl"],
+                                       f["tp1"],f["tp2"],f["tp1"],f["grade"],"Fast Pulse M15")
+                        st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
 
     # ── WATCHLIST ──────────────────────────────────────────────────────────────
     with t2:
