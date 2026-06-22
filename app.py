@@ -1402,7 +1402,7 @@ if pg=="Dashboard":
                     fast_hits.append({"name":name,"sym":sym,"sig":sig,"conf":conf,"res":res,
                         "entry":entry,"sl":sl15,"tp1":tp1_15,"tp2":tp2_15,"grade":grade,
                         "session_ok":session_ok,"session_msg":session_msg,
-                        "is_spec":name in SPECIALISTS})
+                        "is_spec":name in SPECIALISTS,"scanned_at":datetime.datetime.now()})
                 fast_hits.sort(key=lambda x:(x["is_spec"],x["grade"]=="B",x["conf"]),reverse=True)
 
             if not fast_hits:
@@ -1421,6 +1421,11 @@ if pg=="Dashboard":
                     spec_icon=spec.get("icon","")
                     gc="grade-b" if f["grade"]=="B" else "grade-c"
                     agr=[n for n,(s,_) in f["res"].items() if s==("BUY" if ib else "SELL")]
+                    rr15=calc_rr(f["entry"],f["sl"],f["tp1"])
+                    tago15=time_ago(f["scanned_at"])
+                    one_liner15=build_one_liner(f["name"],f["sig"],agr,f["grade"])
+                    copy_text15=build_copy_text(f["name"],f["sig"],f["entry"],f["sl"],
+                                                 f["tp1"],f["tp2"],f["tp1"],rr15,f["grade"])
                     st.markdown(f"""<div style='background:#161b22;border:2px solid {brd};
                     border-radius:12px;padding:12px 14px;margin-bottom:8px'>
                     <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>
@@ -1428,12 +1433,15 @@ if pg=="Dashboard":
                         <span style='font-size:16px;font-weight:900;color:{brd}'>{spec_icon} {icon} {f["sig"]}</span>
                         &nbsp;<span class='{gc}' style='font-size:11px'>{f["grade"]}</span>
                         <div style='font-size:16px;font-weight:700;color:#e6edf3'>{f["name"]} <span style='font-size:11px;color:#8b949e'>(M15)</span></div>
+                        <div style='font-size:10px;color:#8b949e;margin-top:2px'>🕐 {tago15} &nbsp;|&nbsp; RR <b style='color:#ffd700'>{rr15}</b></div>
                       </div>
                       <div style='text-align:right'>
                         <div style='font-size:22px;font-weight:900;color:{"#3fb950" if f["conf"]>=83 else "#ffd700"}'>{f["conf"]}%</div>
                         <div style='font-size:10px;color:#8b949e'>{len(agr)}/3 agree</div>
                       </div>
                     </div>
+                    <div style='font-size:11px;color:#c9d1d9;background:#00000033;border-radius:7px;
+                    padding:6px 8px;margin-bottom:8px;line-height:1.4'>💬 {one_liner15}</div>
                     <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px'>
                       <div style='background:#00000044;border-radius:6px;padding:6px;text-align:center'>
                         <div style='font-size:9px;color:#8b949e'>ENTRY</div>
@@ -1450,10 +1458,16 @@ if pg=="Dashboard":
                     </div>
                     <div style='font-size:11px;color:{"#3fb950" if f["session_ok"] else "#ffa500"}'>{f["session_msg"]}</div>
                     </div>""",unsafe_allow_html=True)
-                    if st.button(f"🎫 Quick Ticket",key=f"fast_tk_{fidx}",use_container_width=True):
-                        ok=auto_ticket(f["name"],f["sig"],f["conf"],f["entry"],f["sl"],
-                                       f["tp1"],f["tp2"],f["tp1"],f["grade"],"Fast Pulse M15")
-                        st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
+                    fc1,fc2=st.columns(2)
+                    with fc1:
+                        if st.button(f"🎫 Quick Ticket",key=f"fast_tk_{fidx}",use_container_width=True):
+                            ok=auto_ticket(f["name"],f["sig"],f["conf"],f["entry"],f["sl"],
+                                           f["tp1"],f["tp2"],f["tp1"],f["grade"],"Fast Pulse M15")
+                            st.success("✅ Ticket created!") if ok else st.warning("Already ticketed today.")
+                    with fc2:
+                        with st.popover("📋 Copy"):
+                            st.code(copy_text15,language=None)
+                            st.caption("Tap and hold to copy, then paste into MT4/MT5.")
 
     # ── WATCHLIST ──────────────────────────────────────────────────────────────
     with t2:
