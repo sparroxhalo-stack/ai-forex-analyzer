@@ -3,118 +3,223 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import datetime
-import json
-import os
 import requests
 import hashlib
 
-# ── Page Config ──────────────────────────────────────────────
-st.set_page_config(page_title="Sparro FX AI", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Sparro FX AI", layout="wide", page_icon="⚡", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
-  body,.main{background:#0d1117;color:#e6edf3}
-  .stMetric{background:#161b22;border-radius:10px;padding:12px}
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  html,body,[class*="css"]{font-family:'Inter',sans-serif;background:#0a0a0f;color:#e6edf3}
+  .main{background:#0a0a0f;padding:0}
+  .block-container{padding:0.5rem 0.8rem}
   .stProgress>div>div{background:linear-gradient(90deg,#00c6ff,#0072ff)}
-  .tier-box{background:#161b22;border-radius:14px;padding:20px;text-align:center;border:2px solid #30363d}
-  .tier-box.gold{border-color:#ffd200}
-  .news-card{background:#161b22;border-radius:10px;padding:14px;margin-bottom:8px;border-left:4px solid #f78166}
-  .strategy-card{background:#161b22;border-radius:10px;padding:14px;margin-bottom:8px;border-left:4px solid #3fb950;font-size:14px;line-height:1.8}
-  .grade-a{background:#1a472a;border:1px solid #3fb950;border-radius:8px;padding:10px;text-align:center}
-  .grade-b{background:#1a3a4a;border:1px solid #0072ff;border-radius:8px;padding:10px;text-align:center}
-  .grade-c{background:#2d2a1a;border:1px solid #ffd200;border-radius:8px;padding:10px;text-align:center}
-  .grade-d{background:#2d1a1a;border:1px solid #f85149;border-radius:8px;padding:10px;text-align:center}
-  .strength-bar{height:20px;border-radius:4px;margin:2px 0}
+
+  /* TOP HEADER */
+  .app-header{background:linear-gradient(135deg,#0d1117,#161b22);
+    border-bottom:1px solid #21262d;padding:12px 16px;border-radius:0;
+    display:flex;align-items:center;justify-content:space-between;margin:-0.5rem -0.8rem 1rem}
+  .app-logo{font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.5px}
+  .app-logo span{color:#00c6ff}
+  .live-dot{width:8px;height:8px;background:#3fb950;border-radius:50%;
+    display:inline-block;margin-right:6px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+  /* TAB NAVIGATION */
+  .tab-nav{display:flex;gap:4px;background:#161b22;border-radius:12px;
+    padding:4px;margin-bottom:16px;overflow-x:auto}
+  .tab-btn{flex:1;min-width:80px;padding:8px 12px;border-radius:8px;border:none;
+    background:transparent;color:#8b949e;font-size:12px;font-weight:600;
+    cursor:pointer;text-align:center;white-space:nowrap}
+  .tab-btn.active{background:#0072ff;color:#fff}
+
+  /* SIGNAL CARD */
+  .signal-card{background:#1a0a0a;border:1px solid #f8514930;border-radius:16px;
+    padding:16px;margin-bottom:12px;position:relative;overflow:hidden}
+  .signal-card.buy{background:#0a1a0a;border-color:#3fb95030}
+  .signal-card.wait{background:#1a1a0a;border-color:#ffd20030}
+
+  .signal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .signal-direction{font-size:20px;font-weight:800;letter-spacing:1px}
+  .signal-direction.sell{color:#f85149}
+  .signal-direction.buy{color:#3fb950}
+
+  .grade-badge{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:800;margin-right:6px}
+  .grade-a{background:#3fb950;color:#000}
+  .grade-b{background:#0072ff;color:#fff}
+  .grade-c{background:#ffd200;color:#000}
+  .grade-d{background:#f85149;color:#fff}
+
+  .strat-badge{background:#21262d;color:#8b949e;padding:3px 8px;
+    border-radius:6px;font-size:11px;font-weight:600;margin-right:4px}
+  .strat-badge.smc{background:#7c3aed22;color:#a78bfa}
+  .strat-badge.mtf{background:#0072ff22;color:#58a6ff}
+
+  .confidence-pct{font-size:28px;font-weight:800;color:#ffd200}
+
+  .pair-name{font-size:22px;font-weight:800;color:#fff;margin:6px 0}
+  .mtf-line{font-size:12px;color:#3fb950;margin:4px 0}
+  .market-condition{font-size:12px;color:#ffd200;margin:4px 0}
+
+  /* PRICE GRID */
+  .price-grid{display:grid;grid-template-columns:repeat(5,1fr);
+    gap:6px;margin:12px 0;background:#0d1117;border-radius:10px;padding:10px}
+  .price-cell{text-align:center}
+  .price-label{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
+  .price-value{font-size:13px;font-weight:700;margin-top:2px}
+  .price-value.entry{color:#fff}
+  .price-value.sl{color:#f85149}
+  .price-value.tp{color:#3fb950}
+
+  /* FILTER BADGES */
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .filter-item{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .filter-label{font-size:10px;color:#8b949e}
+  .filter-check{font-size:14px}
+
+  /* TF ROW */
+  .tf-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+  .tf-cell{background:#0d1117;border-radius:8px;padding:8px;text-align:center}
+  .tf-label{font-size:10px;color:#8b949e;font-weight:600}
+  .tf-signal{font-size:13px;font-weight:700;margin-top:2px}
+  .tf-signal.buy{color:#3fb950}
+  .tf-signal.sell{color:#f85149}
+  .tf-signal.wait{color:#ffd200}
+
+  /* STRATEGY ROW */
+  .strat-row{font-size:11px;color:#8b949e;margin-top:8px;line-height:1.6}
+  .strat-row b{color:#58a6ff}
+
+  /* AGREE BADGE */
+  .agree-badge{font-size:11px;color:#8b949e;text-align:right}
+
+  /* METRIC CARDS */
+  .metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+  .metric-card{background:#161b22;border-radius:10px;padding:12px;text-align:center;border:1px solid #21262d}
+  .metric-label{font-size:10px;color:#8b949e;font-weight:600;text-transform:uppercase}
+  .metric-value{font-size:18px;font-weight:800;color:#fff;margin-top:4px}
+
+  /* STRENGTH BAR */
+  .strength-item{margin-bottom:8px}
+  .strength-header{display:flex;justify-content:space-between;margin-bottom:3px}
+  .strength-bar-bg{background:#21262d;border-radius:4px;height:8px}
+  .strength-bar-fill{height:8px;border-radius:4px}
+
+  /* NEWS CARD */
+  .news-item{background:#161b22;border-radius:10px;padding:12px;
+    margin-bottom:8px;border-left:3px solid #f85149}
+  .news-item.medium{border-color:#ffd200}
+  .news-item.low{border-color:#21262d}
+
+  /* BOTTOM NAV */
+  .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#161b22;
+    border-top:1px solid #21262d;display:flex;justify-content:space-around;
+    padding:10px 0;z-index:999}
+  .nav-item{display:flex;flex-direction:column;align-items:center;
+    font-size:10px;color:#8b949e;cursor:pointer;gap:3px}
+  .nav-item.active{color:#0072ff}
+
+  /* SCROLLABLE CONTENT */
+  .content-area{padding-bottom:80px}
+
+  /* HIDE streamlit elements */
+  #MainMenu{visibility:hidden}
+  footer{visibility:hidden}
+  header{visibility:hidden}
+  .stDeployButton{display:none}
 </style>
 """, unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
-# SUPABASE HELPERS
+# SUPABASE
 # ════════════════════════════════════════════════════════════
-def get_supabase_headers():
-    key = st.secrets.get("SUPABASE_KEY","")
-    return {"apikey":key,"Authorization":f"Bearer {key}","Content-Type":"application/json"}
+def get_headers():
+    key=st.secrets.get("SUPABASE_KEY","")
+    return {"apikey":key,"Authorization":f"Bearer {key}","Content-Type":"application/json","Prefer":"return=representation"}
 
-def supabase_url(path):
-    return f"{st.secrets.get('SUPABASE_URL','')}/rest/v1/{path}"
-
-def hash_password(p): return hashlib.sha256(p.encode()).hexdigest()
+def sb_url(path): return f"{st.secrets.get('SUPABASE_URL','')}/rest/v1/{path}"
+def hash_pw(p): return hashlib.sha256(p.encode()).hexdigest()
 
 def get_user(email):
     try:
-        r=requests.get(supabase_url(f"users?email=eq.{email}&select=*"),headers=get_supabase_headers(),timeout=8)
-        d=r.json(); return d[0] if d else None
+        r=requests.get(sb_url(f"users?email=eq.{email}&select=*"),headers=get_headers(),timeout=8)
+        d=r.json(); return d[0] if isinstance(d,list) and d else None
     except: return None
 
 def create_user(email,password,tier="free"):
     try:
-        headers=get_supabase_headers()
-        headers["Prefer"]="return=representation"
-        payload={"email":email,"password_hash":hash_password(password),"tier":tier,"is_active":True,"created_at":datetime.datetime.now().isoformat()}
-        r=requests.post(supabase_url("users"),headers=headers,json=payload,timeout=8)
+        r=requests.post(sb_url("users"),headers=get_headers(),
+            json={"email":email,"password_hash":hash_pw(password),"tier":tier,
+                  "is_active":True,"created_at":datetime.datetime.now().isoformat()},timeout=8)
         return r.status_code in [200,201], r.text
-    except Exception as e: return False, str(e)
+    except Exception as e: return False,str(e)
 
-def update_user_tier(email,tier):
+def update_tier(email,tier):
     try:
-        r=requests.patch(supabase_url(f"users?email=eq.{email}"),headers=get_supabase_headers(),
-            json={"tier":tier},timeout=8)
+        r=requests.patch(sb_url(f"users?email=eq.{email}"),headers=get_headers(),json={"tier":tier},timeout=8)
         return r.status_code in [200,204]
     except: return False
 
 def delete_user(email):
     try:
-        r=requests.delete(supabase_url(f"users?email=eq.{email}"),headers=get_supabase_headers(),timeout=8)
+        r=requests.delete(sb_url(f"users?email=eq.{email}"),headers=get_headers(),timeout=8)
         return r.status_code in [200,204]
     except: return False
 
 def get_all_users():
     try:
-        r=requests.get(supabase_url("users?select=*&order=created_at.desc"),headers=get_supabase_headers(),timeout=8)
-        return r.json()
+        r=requests.get(sb_url("users?select=*&order=created_at.desc"),headers=get_headers(),timeout=8)
+        return r.json() if isinstance(r.json(),list) else []
     except: return []
 
 # ════════════════════════════════════════════════════════════
 # SESSION STATE
 # ════════════════════════════════════════════════════════════
 DEFAULTS={"logged_in":False,"user_email":"","user_tier":"free","is_admin":False,
-          "trade_journal":[],"telegram_token":"","telegram_chat_id":"",
-          "notification_threshold":75,"ai_strategy":"","uploaded_chart":None}
+          "active_tab":"Pulse","trade_journal":[],"telegram_token":"",
+          "telegram_chat_id":"","ai_strategy":"","notification_threshold":75}
 for k,v in DEFAULTS.items():
     if k not in st.session_state: st.session_state[k]=v
 
 # ════════════════════════════════════════════════════════════
-# LOGIN SCREEN
+# LOGIN
 # ════════════════════════════════════════════════════════════
 def show_login():
-    st.markdown("<div style='text-align:center;padding:40px 0 20px'><h1>🚀 Sparro FX AI</h1><p style='color:#8b949e'>AI-Powered Forex & Commodity Trading Signals</p></div>",unsafe_allow_html=True)
+    st.markdown("""
+    <div style='text-align:center;padding:60px 20px 30px'>
+      <div style='font-size:48px'>⚡</div>
+      <h1 style='font-size:28px;font-weight:800;color:#fff;margin:8px 0'>Sparro FX AI</h1>
+      <p style='color:#8b949e;font-size:14px'>Professional AI Trading Signals</p>
+    </div>""",unsafe_allow_html=True)
+
     tab1,tab2=st.tabs(["🔐 Login","📝 Register"])
     with tab1:
-        st.subheader("Login")
-        email=st.text_input("Email",key="li_email")
-        password=st.text_input("Password",type="password",key="li_pass")
+        email=st.text_input("Email",placeholder="your@email.com",key="li_e")
+        password=st.text_input("Password",type="password",placeholder="••••••••",key="li_p")
         if st.button("Login",type="primary",use_container_width=True):
-            admin_u=st.secrets.get("ADMIN_USERNAME","admin")
-            admin_p=st.secrets.get("ADMIN_PASSWORD","")
-            if email==admin_u and password==admin_p:
+            au=st.secrets.get("ADMIN_USERNAME","admin")
+            ap=st.secrets.get("ADMIN_PASSWORD","")
+            if email==au and password==ap:
                 st.session_state.update({"logged_in":True,"is_admin":True,"user_email":email,"user_tier":"admin"})
                 st.rerun()
             else:
                 user=get_user(email)
-                if user and user["password_hash"]==hash_password(password):
+                if user and user.get("password_hash")==hash_pw(password):
                     if not user.get("is_active",True): st.error("❌ Account deactivated.")
                     else:
                         st.session_state.update({"logged_in":True,"is_admin":False,"user_email":email,"user_tier":user.get("tier","free")})
                         st.rerun()
                 else: st.error("❌ Invalid email or password.")
     with tab2:
-        st.subheader("Create Free Account")
-        re=st.text_input("Email",key="reg_e"); rp=st.text_input("Password",type="password",key="reg_p"); rp2=st.text_input("Confirm Password",type="password",key="reg_p2")
-        if st.button("Register",type="primary",use_container_width=True):
+        re=st.text_input("Email",placeholder="your@email.com",key="re_e")
+        rp=st.text_input("Password",type="password",placeholder="Min 6 characters",key="re_p")
+        rp2=st.text_input("Confirm Password",type="password",placeholder="Repeat password",key="re_p2")
+        if st.button("Create Account",type="primary",use_container_width=True):
             if not re or not rp: st.error("Fill all fields.")
             elif rp!=rp2: st.error("❌ Passwords don't match.")
             elif len(rp)<6: st.error("❌ Min 6 characters.")
-            elif get_user(re): st.error("❌ Email already exists.")
+            elif get_user(re): st.error("❌ Email already registered.")
             else:
                 ok,err=create_user(re,rp,"free")
                 if ok: st.success("✅ Account created! Please login.")
@@ -124,65 +229,22 @@ if not st.session_state.logged_in:
     show_login(); st.stop()
 
 # ════════════════════════════════════════════════════════════
-# ASSETS & SPECIALIST WEIGHTINGS
+# ASSETS
 # ════════════════════════════════════════════════════════════
-ALL_PAIRS={
-    "EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","USD/JPY":"USDJPY=X",
-    "AUD/USD":"AUDUSD=X","USD/CHF":"USDCHF=X","USD/CAD":"USDCAD=X",
-    "Gold (XAU/USD)":"GC=F","Bitcoin":"BTC-USD","NASDAQ":"^IXIC","S&P 500":"^GSPC"
-}
+ALL_PAIRS={"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","USD/JPY":"USDJPY=X",
+           "AUD/USD":"AUDUSD=X","USD/CHF":"USDCHF=X","USD/CAD":"USDCAD=X",
+           "Gold (XAU/USD)":"GC=F","Bitcoin":"BTC-USD","NASDAQ":"^IXIC","S&P 500":"^GSPC"}
 FREE_PAIRS=dict(list(ALL_PAIRS.items())[:5])
-
-# Specialist weighting — these pairs get bonus confidence when signals are strong
-SPECIALIST_PAIRS={"Gold (XAU/USD)":1.15,"Bitcoin":1.10,"EUR/USD":1.08,"GBP/USD":1.05,"USD/JPY":1.05}
-
-# Currency map for strength meter
-CURRENCY_PAIRS={
-    "USD":["EURUSD=X","GBPUSD=X","USDJPY=X","AUDUSD=X","USDCHF=X","USDCAD=X"],
-    "EUR":["EURUSD=X","EURGBP=X","EURJPY=X"],
-    "GBP":["GBPUSD=X","EURGBP=X","GBPJPY=X"],
-    "JPY":["USDJPY=X","EURJPY=X","GBPJPY=X"],
-    "AUD":["AUDUSD=X","AUDCAD=X"],
-    "CHF":["USDCHF=X","EURCHF=X"],
-    "CAD":["USDCAD=X","AUDCAD=X"],
-    "XAU":["GC=F"],
-}
+SPECIALIST={"Gold (XAU/USD)":1.15,"Bitcoin":1.10,"EUR/USD":1.08,"GBP/USD":1.05}
 
 premium=st.session_state.user_tier in ["premium","admin"]
 is_admin=st.session_state.is_admin
 pairs=ALL_PAIRS if premium else FREE_PAIRS
 
 # ════════════════════════════════════════════════════════════
-# TELEGRAM
+# DATA & STRATEGIES
 # ════════════════════════════════════════════════════════════
-def send_telegram(token,chat_id,message):
-    try:
-        r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id":chat_id,"text":message,"parse_mode":"Markdown"},timeout=5)
-        return r.status_code==200
-    except: return False
-
-def notify_trade(asset,signal,confidence,grade,entry,sl,tp1,tp2,tp3):
-    token=st.session_state.telegram_token; chat_id=st.session_state.telegram_chat_id
-    if not token or not chat_id: return False
-    grade_emoji={"A":"🏆","B":"✅","C":"⚠️","D":"❌"}.get(grade,"")
-    direction="🚀 BUY" if "BUY" in signal else "📉 SELL"
-    msg=f"""
-🔔 *Sparro FX AI — Grade {grade} Signal* {grade_emoji}
-{direction} *{asset}*
-📊 {signal} | 🎯 {confidence}%
-💰 Entry: `{round(entry,5)}`
-🛑 SL: `{round(sl,5)}`
-✅ TP1: `{round(tp1,5)}` | TP2: `{round(tp2,5)}` | TP3: `{round(tp3,5)}`
-⏰ {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} UTC
-_Sparro FX AI — Trade responsibly_
-"""
-    return send_telegram(token,chat_id,msg)
-
-# ════════════════════════════════════════════════════════════
-# DATA FETCH
-# ════════════════════════════════════════════════════════════
-def fetch_data(symbol,period="6mo",interval="1d"):
+def fetch(symbol,period="6mo",interval="1d"):
     try:
         df=yf.download(symbol,period=period,interval=interval,progress=False,auto_adjust=True)
         if df.empty: return None
@@ -190,1014 +252,1005 @@ def fetch_data(symbol,period="6mo",interval="1d"):
         return df
     except: return None
 
-# ════════════════════════════════════════════════════════════
-# SIGNAL GRADE SYSTEM (A/B/C/D)
-# ════════════════════════════════════════════════════════════
-def get_signal_grade(confidence, buys, sells, pair_name):
+def get_rsi(close,period=14):
+    d=close.diff(); g=d.where(d>0,0).rolling(period).mean(); l=(-d.where(d<0,0)).rolling(period).mean()
+    return (100-(100/(1+(g/l)))).iloc[-1]
+
+def get_atr(df,period=14):
+    h=df["High"]; l=df["Low"]; c=df["Close"]
+    tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
+    return float(tr.rolling(period).mean().iloc[-1])
+
+def time_ago(dt):
+    """Returns human-readable time since signal was generated"""
+    diff=datetime.datetime.utcnow()-dt
+    secs=int(diff.total_seconds())
+    if secs<60: return "just now"
+    if secs<3600: return f"{secs//60}m ago"
+    if secs<86400: return f"{secs//3600}h ago"
+    return f"{secs//86400}d ago"
+
+def analyse_pair(symbol,pair_name):
     """
-    Grade A: 87%+ confidence, 7-8 strategies agree, specialist pair bonus
-    Grade B: 75-86%, 6+ strategies agree
-    Grade C: 62-74%, 5 strategies agree
-    Grade D: Below 62% — avoid
+    Full professional analysis with 9 strategies:
+    1. EMA Stack (trend direction + slope)
+    2. RSI + Divergence filter
+    3. MACD Crossover + Histogram momentum
+    4. Bollinger Band Squeeze + Breakout
+    5. Support/Resistance zones (swing highs/lows)
+    6. Break of Structure (BOS/CHoCH)
+    7. Candlestick Pattern recognition
+    8. Volume confirmation
+    9. ADX Trend Strength filter
     """
-    agreement=max(buys,sells)
-    specialist_bonus=SPECIALIST_PAIRS.get(pair_name,1.0)
-    adj_conf=min(99,round(confidence*specialist_bonus))
+    scan_time=datetime.datetime.utcnow()
 
-    if adj_conf>=87 and agreement>=7: return "A", adj_conf, "🏆 Highest quality — take this trade"
-    elif adj_conf>=75 and agreement>=6: return "B", adj_conf, "✅ Good setup — trade with standard size"
-    elif adj_conf>=62 and agreement>=5: return "C", adj_conf, "⚠️ Moderate — trade with reduced size"
-    else: return "D", adj_conf, "❌ Weak signal — avoid or wait"
+    df_d=fetch(symbol,"6mo","1d")
+    df_4h=fetch(symbol,"3mo","1h")
+    df_1h=fetch(symbol,"1mo","1h")
+    df_w=fetch(symbol,"2y","1wk")
+    if df_d is None or len(df_d)<50: return None
 
-# ════════════════════════════════════════════════════════════
-# STRATEGY ENGINE (8 strategies)
-# ════════════════════════════════════════════════════════════
-def strategy_ema_trend(df):
-    c=df["Close"]; e20=c.ewm(span=20).mean(); e50=c.ewm(span=50).mean(); e200=c.ewm(span=200).mean()
-    v20=e20.iloc[-1]; v50=e50.iloc[-1]; v200=e200.iloc[-1]
-    slope=e20.iloc[-1]-e20.iloc[-5]
-    if v20>v50 and v50>v200: return "BUY",  f"EMA stack bullish. Slope: {'rising' if slope>0 else 'flat'}"
-    if v20<v50 and v50<v200: return "SELL", f"EMA stack bearish. Slope: {'falling' if slope<0 else 'flat'}"
-    return "NEUTRAL","EMA stack mixed — no clear trend"
+    c=df_d["Close"]; h_=df_d["High"]; l_=df_d["Low"]
+    price=float(c.iloc[-1])
+    atr=get_atr(df_d)
 
-def strategy_rsi(df):
-    c=df["Close"]; d=c.diff()
-    g=d.where(d>0,0).rolling(14).mean(); l=(-d.where(d<0,0)).rolling(14).mean()
-    rsi=(100-(100/(1+(g/l)))).iloc[-1]
-    if rsi>=70: return "BUY",  f"RSI={round(rsi,1)} — strongly overbought momentum"
-    if rsi>=60: return "BUY",  f"RSI={round(rsi,1)} — bullish momentum"
-    if rsi<=30: return "SELL", f"RSI={round(rsi,1)} — strongly oversold"
-    if rsi<=40: return "SELL", f"RSI={round(rsi,1)} — bearish momentum"
-    return "NEUTRAL",f"RSI={round(rsi,1)} — neutral zone (40-60)"
+    # ── STRATEGY 1: EMA STACK ──────────────────────────────
+    ema20=c.ewm(span=20).mean(); ema50=c.ewm(span=50).mean(); ema200=c.ewm(span=200).mean()
+    e20=float(ema20.iloc[-1]); e50=float(ema50.iloc[-1]); e200=float(ema200.iloc[-1])
+    ema_slope=(float(ema20.iloc[-1])-float(ema20.iloc[-5]))/float(ema20.iloc[-5])*100
+    # Full stack: all 3 EMAs aligned = strongest signal
+    if e20>e50 and e50>e200 and ema_slope>0:   ema_sig="BUY"
+    elif e20<e50 and e50<e200 and ema_slope<0: ema_sig="SELL"
+    elif e20>e50 and e50>e200:                  ema_sig="BUY"
+    elif e20<e50 and e50<e200:                  ema_sig="SELL"
+    elif e20>e50:                               ema_sig="BUY"
+    elif e20<e50:                               ema_sig="SELL"
+    else:                                       ema_sig="WAIT"
 
-def strategy_macd(df):
-    c=df["Close"]; m=c.ewm(span=12).mean()-c.ewm(span=26).mean()
-    s=m.ewm(span=9).mean(); h=m-s
-    if m.iloc[-1]>s.iloc[-1] and h.iloc[-1]>0 and h.iloc[-1]>h.iloc[-2]: return "BUY","MACD bullish crossover + positive histogram"
-    if m.iloc[-1]<s.iloc[-1] and h.iloc[-1]<0 and h.iloc[-1]<h.iloc[-2]: return "SELL","MACD bearish crossover + negative histogram"
-    if m.iloc[-1]>s.iloc[-1]: return "BUY","MACD above signal line"
-    if m.iloc[-1]<s.iloc[-1]: return "SELL","MACD below signal line"
-    return "NEUTRAL","MACD no clear signal"
+    # ── STRATEGY 2: RSI (14) WITH ZONES ───────────────────
+    rsi_val=get_rsi(c,14)
+    # Stricter zones for quality: 60+ bullish, 40- bearish
+    if rsi_val>=60:   rsi_sig="BUY"
+    elif rsi_val<=40: rsi_sig="SELL"
+    else:             rsi_sig="WAIT"
 
-def strategy_bollinger(df):
-    c=df["Close"]; mid=c.rolling(20).mean(); std=c.rolling(20).std()
-    upper=mid+2*std; lower=mid-2*std; p=c.iloc[-1]; bw=((upper-lower)/mid).iloc[-1]
-    prev_bw=((upper-lower)/mid).iloc[-5]; squeeze=prev_bw<bw*0.85
-    if p>upper.iloc[-1]: return "BUY",f"Broke above BB upper — breakout (BW={round(bw,4)})"
-    if p<lower.iloc[-1]: return "SELL",f"Broke below BB lower — breakdown (BW={round(bw,4)})"
-    if squeeze and p>mid.iloc[-1]: return "BUY",f"BB squeeze expanding bullish (BW={round(bw,4)})"
-    if squeeze and p<mid.iloc[-1]: return "SELL",f"BB squeeze expanding bearish (BW={round(bw,4)})"
-    if p>mid.iloc[-1]: return "BUY",f"Above BB midline (BW={round(bw,4)})"
-    return "SELL",f"Below BB midline (BW={round(bw,4)})"
+    # ── STRATEGY 3: MACD ──────────────────────────────────
+    macd_line=c.ewm(span=12).mean()-c.ewm(span=26).mean()
+    signal_line=macd_line.ewm(span=9).mean()
+    hist=macd_line-signal_line
+    macd_cross_up=macd_line.iloc[-1]>signal_line.iloc[-1] and macd_line.iloc[-2]<=signal_line.iloc[-2]
+    macd_cross_dn=macd_line.iloc[-1]<signal_line.iloc[-1] and macd_line.iloc[-2]>=signal_line.iloc[-2]
+    hist_rising=float(hist.iloc[-1])>float(hist.iloc[-2])>float(hist.iloc[-3])
+    hist_falling=float(hist.iloc[-1])<float(hist.iloc[-2])<float(hist.iloc[-3])
+    if macd_line.iloc[-1]>signal_line.iloc[-1] and float(hist.iloc[-1])>0 and hist_rising: macd_sig="BUY"
+    elif macd_line.iloc[-1]<signal_line.iloc[-1] and float(hist.iloc[-1])<0 and hist_falling: macd_sig="SELL"
+    elif macd_cross_up: macd_sig="BUY"
+    elif macd_cross_dn: macd_sig="SELL"
+    else: macd_sig="WAIT"
 
-def strategy_sr(df):
-    h=df["High"]; l=df["Low"]; p=float(df["Close"].iloc[-1])
-    res=float(h.rolling(10).max().iloc[-1]); sup=float(l.rolling(10).min().iloc[-1])
-    zone=(res-sup)*0.15
-    if p>=res-zone: return "SELL",f"At resistance {round(res,5)} — rejection zone"
-    if p<=sup+zone: return "BUY", f"At support {round(sup,5)} — bounce zone"
-    mid=(res+sup)/2
-    if p>mid: return "BUY", f"Upper half of range — bullish bias. S={round(sup,5)} R={round(res,5)}"
-    return "SELL",f"Lower half of range — bearish bias. S={round(sup,5)} R={round(res,5)}"
+    # ── STRATEGY 4: BOLLINGER BANDS ───────────────────────
+    bb_mid=c.rolling(20).mean(); bb_std=c.rolling(20).std()
+    bb_upper=bb_mid+2*bb_std; bb_lower=bb_mid-2*bb_std
+    bb_width=((bb_upper-bb_lower)/bb_mid)
+    squeeze=float(bb_width.iloc[-1])<float(bb_width.rolling(20).mean().iloc[-1])*0.8
+    if price>float(bb_upper.iloc[-1]):                          bb_sig="BUY"
+    elif price<float(bb_lower.iloc[-1]):                        bb_sig="SELL"
+    elif squeeze and price>float(bb_mid.iloc[-1]):              bb_sig="BUY"
+    elif squeeze and price<float(bb_mid.iloc[-1]):              bb_sig="SELL"
+    elif price>float(bb_mid.iloc[-1]) and not squeeze:         bb_sig="BUY"
+    else:                                                        bb_sig="SELL"
 
-def strategy_candles(df):
-    o=df["Open"].iloc[-1] if "Open" in df.columns else df["Close"].iloc[-2]
-    h=df["High"].iloc[-1]; l=df["Low"].iloc[-1]; c=df["Close"].iloc[-1]
-    po=df["Open"].iloc[-2] if "Open" in df.columns else df["Close"].iloc[-3]; pc=df["Close"].iloc[-2]
-    body=abs(c-o); candle=h-l; uw=h-max(c,o); lw=min(c,o)-l
-    if c>o and pc<po and c>po and o<pc: return "BUY","🕯️ Bullish Engulfing — strong reversal signal"
-    if c<o and pc>po and c<po and o>pc: return "SELL","🕯️ Bearish Engulfing — strong reversal signal"
-    if lw>body*2.5 and uw<body*0.3 and c>o: return "BUY","🕯️ Hammer — strong bullish rejection"
-    if lw>body*2 and uw<body*0.5:           return "BUY","🕯️ Pin Bar — bullish rejection"
-    if uw>body*2.5 and lw<body*0.3 and c<o: return "SELL","🕯️ Inverted Hammer / Shooting Star"
-    if uw>body*2 and lw<body*0.5:           return "SELL","🕯️ Shooting Star — bearish rejection"
-    if body<candle*0.1: return "NEUTRAL","🕯️ Doji — market indecision"
-    if c>o: return "BUY","Bullish candle close"
-    return "SELL","Bearish candle close"
+    # ── STRATEGY 5: SUPPORT & RESISTANCE ──────────────────
+    # Use swing highs/lows over 20 bars for dynamic S/R
+    res_20=float(h_.rolling(20).max().iloc[-1])
+    sup_20=float(l_.rolling(20).min().iloc[-1])
+    res_10=float(h_.rolling(10).max().iloc[-1])
+    sup_10=float(l_.rolling(10).min().iloc[-1])
+    # Best resistance = lowest of the two (nearest)
+    resistance=min(res_20,res_10)
+    support=max(sup_20,sup_10)
+    sr_range=resistance-support
+    near_res=price>=(resistance-sr_range*0.08)
+    near_sup=price<=(support+sr_range*0.08)
+    if near_res:                           sr_sig="SELL"
+    elif near_sup:                         sr_sig="BUY"
+    elif price>(resistance+support)/2:     sr_sig="BUY"
+    else:                                  sr_sig="SELL"
 
-def strategy_bos(df):
-    h=df["High"]; l=df["Low"]; p=float(df["Close"].iloc[-1])
-    sh=float(h.iloc[-20:-5].max()); sl_=float(l.iloc[-20:-5].min())
-    prev_sh=float(h.iloc[-40:-20].max()) if len(h)>40 else sh
-    prev_sl=float(l.iloc[-40:-20].min()) if len(l)>40 else sl_
-    if p>sh and sh>prev_sh: return "BUY",f"🔺 Strong BOS — higher highs forming above {round(sh,5)}"
-    if p>sh:                return "BUY",f"🔺 Break of Structure above {round(sh,5)}"
-    if p<sl_ and sl_<prev_sl: return "SELL",f"🔻 Strong BOS — lower lows forming below {round(sl_,5)}"
-    if p<sl_:               return "SELL",f"🔻 Break of Structure below {round(sl_,5)}"
-    return "NEUTRAL",f"Inside range {round(sl_,5)}–{round(sh,5)}"
+    # ── STRATEGY 6: BREAK OF STRUCTURE (BOS/CHoCH) ────────
+    # Look for breaks of recent swing highs/lows
+    lookback_h=float(h_.iloc[-20:-3].max())
+    lookback_l=float(l_.iloc[-20:-3].min())
+    prev_h=float(h_.iloc[-40:-20].max()) if len(h_)>=40 else lookback_h
+    prev_l=float(l_.iloc[-40:-20].min()) if len(l_)>=40 else lookback_l
+    # Strong BOS = higher high + price above previous swing
+    strong_bull_bos=price>lookback_h and lookback_h>prev_h
+    strong_bear_bos=price<lookback_l and lookback_l<prev_l
+    if strong_bull_bos:             bos_sig="BUY"
+    elif strong_bear_bos:           bos_sig="SELL"
+    elif price>lookback_h:          bos_sig="BUY"
+    elif price<lookback_l:          bos_sig="SELL"
+    else:                           bos_sig="WAIT"
 
-def strategy_volume(df):
-    if "Volume" not in df.columns: return "NEUTRAL","No volume data"
-    v=df["Volume"]; c=df["Close"]
-    avg=v.rolling(20).mean().iloc[-1]; cur=v.iloc[-1]; up=c.iloc[-1]>c.iloc[-2]; r=cur/avg if avg>0 else 1
-    if r>2.0 and up:     return "BUY", f"📊 Very high volume bullish ({round(r,1)}×avg) — strong conviction"
-    if r>1.5 and up:     return "BUY", f"📊 High volume bullish ({round(r,1)}×avg)"
-    if r>2.0 and not up: return "SELL",f"📊 Very high volume bearish ({round(r,1)}×avg) — strong conviction"
-    if r>1.5 and not up: return "SELL",f"📊 High volume bearish ({round(r,1)}×avg)"
-    return "NEUTRAL",f"Normal volume ({round(r,1)}×avg)"
+    # ── STRATEGY 7: CANDLESTICK PATTERNS ──────────────────
+    o=float(df_d["Open"].iloc[-1]) if "Open" in df_d.columns else float(c.iloc[-2])
+    hi=float(h_.iloc[-1]); lo=float(l_.iloc[-1]); cl=float(c.iloc[-1])
+    po=float(df_d["Open"].iloc[-2]) if "Open" in df_d.columns else float(c.iloc[-3])
+    pc=float(c.iloc[-2])
+    body=abs(cl-o); full=hi-lo
+    uw=hi-max(cl,o); lw=min(cl,o)-lo
+    # Engulfing (strongest reversal)
+    bull_engulf=cl>o and pc<po and cl>po and o<pc and body>abs(pc-po)*1.2
+    bear_engulf=cl<o and pc>po and cl<po and o>pc and body>abs(pc-po)*1.2
+    # Pin bars (rejection)
+    bull_pin=lw>body*2.5 and uw<body*0.4 and full>atr*0.3
+    bear_pin=uw>body*2.5 and lw<body*0.4 and full>atr*0.3
+    # Inside bar breakout
+    inside_bar=hi<float(h_.iloc[-2]) and lo>float(l_.iloc[-2])
+    if bull_engulf:            candle_sig="BUY";  candle_name="Bullish Engulfing"
+    elif bear_engulf:          candle_sig="SELL"; candle_name="Bearish Engulfing"
+    elif bull_pin:             candle_sig="BUY";  candle_name="Hammer/Pin Bar"
+    elif bear_pin:             candle_sig="SELL"; candle_name="Shooting Star"
+    elif inside_bar and cl>o:  candle_sig="BUY";  candle_name="Inside Bar Bull"
+    elif inside_bar and cl<o:  candle_sig="SELL"; candle_name="Inside Bar Bear"
+    elif cl>o:                 candle_sig="BUY";  candle_name="Bullish close"
+    else:                      candle_sig="SELL"; candle_name="Bearish close"
 
-STRATEGIES={
-    "EMA Trend":strategy_ema_trend,"RSI Momentum":strategy_rsi,
-    "MACD Crossover":strategy_macd,"Bollinger Breakout":strategy_bollinger,
-    "Support/Resistance":strategy_sr,"Candlestick Pattern":strategy_candles,
-    "Break of Structure":strategy_bos,"Volume Momentum":strategy_volume,
-}
-
-def run_all_strategies(symbol,period="6mo"):
-    df=fetch_data(symbol,period)
-    if df is None: return {},0,"ERROR",0,0
-    results={}
-    for name,fn in STRATEGIES.items():
-        try:    results[name]=fn(df)
-        except: results[name]=("NEUTRAL","Error")
-    buys=sum(1 for s,_ in results.values() if s=="BUY")
-    sells=sum(1 for s,_ in results.values() if s=="SELL")
-    total=len(results)
-    if buys>sells:   conf=round(buys/total*100);  sig="STRONG BUY" if buys>=6 else "BUY"
-    elif sells>buys: conf=round(sells/total*100); sig="STRONG SELL" if sells>=6 else "SELL"
-    else:            conf=50; sig="WAIT"
-    return results,conf,sig,buys,sells
-
-# ════════════════════════════════════════════════════════════
-# MULTI-TIMEFRAME ANALYSIS
-# ════════════════════════════════════════════════════════════
-def multi_timeframe_analysis(symbol):
-    timeframes=[
-        ("1H","1h","5d"),("4H","1h","1mo"),
-        ("Daily","1d","6mo"),("Weekly","1wk","1y"),("Monthly","1mo","2y")
-    ]
-    results=[]
-    for label,interval,period in timeframes:
-        try:
-            df=fetch_data(symbol,period,interval)
-            if df is None: results.append({"TF":label,"Signal":"N/A","RSI":"N/A","Trend":"N/A"}); continue
-            c=df["Close"]
-            e20=c.ewm(span=20).mean().iloc[-1]; e50=c.ewm(span=50).mean().iloc[-1]
-            delta=c.diff(); g=delta.where(delta>0,0).rolling(14).mean(); l=(-delta.where(delta<0,0)).rolling(14).mean()
-            rsi=round((100-(100/(1+(g/l)))).iloc[-1],1)
-            if e20>e50 and rsi>55: sig="STRONG BUY"; trend="📈 Bullish"
-            elif e20>e50:          sig="BUY";         trend="📈 Bullish"
-            elif e20<e50 and rsi<45: sig="STRONG SELL"; trend="📉 Bearish"
-            elif e20<e50:          sig="SELL";        trend="📉 Bearish"
-            else:                  sig="WAIT";        trend="➡️ Neutral"
-            results.append({"Timeframe":label,"Signal":sig,"RSI":rsi,"Trend":trend})
-        except: results.append({"Timeframe":label,"Signal":"N/A","RSI":"N/A","Trend":"N/A"})
-    return pd.DataFrame(results)
-
-# ════════════════════════════════════════════════════════════
-# PRECISION ENTRY TOOLS
-# ════════════════════════════════════════════════════════════
-def get_precision_entry(symbol, direction, account_size, risk_pct):
-    try:
-        df=fetch_data(symbol,"3mo","1d")
-        c=df["Close"]; h=df["High"]; l=df["Low"]
-        price=float(c.iloc[-1])
-        tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
-        atr=float(tr.rolling(14).mean().iloc[-1])
-
-        # Multiple entry options
-        entries={}
-        if "BUY" in direction:
-            entries["Aggressive (Market)"] ={"entry":price,          "sl":price-atr*1.0,"tp1":price+atr*1.0,"tp2":price+atr*2.0,"tp3":price+atr*3.0}
-            entries["Standard (ATR SL)"]   ={"entry":price,          "sl":price-atr*1.5,"tp1":price+atr*1.5,"tp2":price+atr*3.0,"tp3":price+atr*4.5}
-            entries["Conservative (EMA)"]  ={"entry":float(c.ewm(span=20).mean().iloc[-1]),"sl":price-atr*2.0,"tp1":price+atr*2.0,"tp2":price+atr*4.0,"tp3":price+atr*6.0}
-        else:
-            entries["Aggressive (Market)"] ={"entry":price,          "sl":price+atr*1.0,"tp1":price-atr*1.0,"tp2":price-atr*2.0,"tp3":price-atr*3.0}
-            entries["Standard (ATR SL)"]   ={"entry":price,          "sl":price+atr*1.5,"tp1":price-atr*1.5,"tp2":price-atr*3.0,"tp3":price-atr*4.5}
-            entries["Conservative (EMA)"]  ={"entry":float(c.ewm(span=20).mean().iloc[-1]),"sl":price+atr*2.0,"tp1":price-atr*2.0,"tp2":price-atr*4.0,"tp3":price-atr*6.0}
-
-        # Position sizing
-        risk_amount=account_size*risk_pct/100
-        for k,v in entries.items():
-            sl_dist=abs(v["entry"]-v["sl"])
-            pip_val=0.10 if price<10 else 0.01
-            lot=round(risk_amount/(sl_dist/pip_val*0.01),2) if sl_dist>0 else 0.01
-            lot=max(0.01,min(lot,10.0))
-            entries[k]["lot_size"]=lot
-            entries[k]["risk_amount"]=risk_amount
-            entries[k]["atr"]=round(atr,5)
-
-        return entries, round(atr,5), price
-    except Exception as e: return {}, 0, 0
-
-def get_trade_setup(symbol,direction):
-    try:
-        df=fetch_data(symbol,"3mo"); c=df["Close"]; h=df["High"]; l=df["Low"]
-        p=float(c.iloc[-1])
-        tr=pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
-        atr=float(tr.rolling(14).mean().iloc[-1]); risk=atr*1.5
-        if "BUY" in direction: return p,p-risk,p+risk,p+risk*2,p+risk*3,round(atr,5)
-        else:                  return p,p+risk,p-risk,p-risk*2,p-risk*3,round(atr,5)
-    except: return None,None,None,None,None,None
-
-# ════════════════════════════════════════════════════════════
-# CURRENCY STRENGTH METER
-# ════════════════════════════════════════════════════════════
-def calculate_currency_strength():
-    strength={}
-    for currency,syms in CURRENCY_PAIRS.items():
-        scores=[]
-        for sym in syms:
-            try:
-                df=fetch_data(sym,"1mo","1d")
-                if df is None: continue
-                c=df["Close"]
-                change=(float(c.iloc[-1])-float(c.iloc[-5]))/float(c.iloc[-5])*100
-                # If currency is quote in pair, invert
-                if sym.startswith(currency.replace("XAU","GC")[:3]): scores.append(change)
-                else: scores.append(-change)
-            except: pass
-        strength[currency]=round(np.mean(scores),3) if scores else 0
-    # Normalize to 0-100
-    vals=list(strength.values())
-    mn,mx=min(vals),max(vals)
-    rng=mx-mn if mx!=mn else 1
-    return {k:round((v-mn)/rng*100,1) for k,v in strength.items()}
-
-# ════════════════════════════════════════════════════════════
-# PROP FIRM TOOLS
-# ════════════════════════════════════════════════════════════
-def prop_firm_calculator(account_size, firm_type, current_profit, current_loss):
-    rules={
-        "FTMO":        {"daily_loss":0.05,"max_loss":0.10,"profit_target":0.10},
-        "MyForexFunds":{"daily_loss":0.05,"max_loss":0.10,"profit_target":0.08},
-        "The5ers":     {"daily_loss":0.04,"max_loss":0.08,"profit_target":0.08},
-        "FundedNext":  {"daily_loss":0.05,"max_loss":0.10,"profit_target":0.10},
-    }
-    rule=rules.get(firm_type,rules["FTMO"])
-    daily_loss_limit =account_size*rule["daily_loss"]
-    max_loss_limit   =account_size*rule["max_loss"]
-    profit_target    =account_size*rule["profit_target"]
-    remaining_daily  =daily_loss_limit-abs(current_loss)
-    remaining_max    =max_loss_limit-abs(current_loss)
-    profit_needed    =profit_target-current_profit
-    safe_lot=round(remaining_daily*0.01/20,2)
-    safe_lot=max(0.01,safe_lot)
-    return {
-        "daily_loss_limit":  daily_loss_limit,
-        "max_loss_limit":    max_loss_limit,
-        "profit_target":     profit_target,
-        "remaining_daily":   max(0,remaining_daily),
-        "remaining_max":     max(0,remaining_max),
-        "profit_needed":     max(0,profit_needed),
-        "safe_lot":          safe_lot,
-        "daily_loss_pct":    rule["daily_loss"]*100,
-        "max_loss_pct":      rule["max_loss"]*100,
-        "profit_target_pct": rule["profit_target"]*100,
-    }
-
-# ════════════════════════════════════════════════════════════
-# PRICE CHART
-# ════════════════════════════════════════════════════════════
-def show_price_chart(symbol,pair_name,signal,entry,sl,tp1,tp2,show_indicators=True):
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
-
-    df=fetch_data(symbol,"3mo","1d")
-    if df is None: st.warning("Chart unavailable."); return
-
-    close=df["Close"]; dates=df.index
-    ema20=close.ewm(span=20).mean(); ema50=close.ewm(span=50).mean(); ema200=close.ewm(span=200).mean()
-    resistance=float(df["High"].rolling(10).max().iloc[-1]); support=float(df["Low"].rolling(10).min().iloc[-1])
-
-    # RSI for subplot
-    delta=close.diff(); g=delta.where(delta>0,0).rolling(14).mean(); l=(-delta.where(delta<0,0)).rolling(14).mean()
-    rsi=100-(100/(1+(g/l)))
-
-    # MACD for subplot
-    macd=close.ewm(span=12).mean()-close.ewm(span=26).mean()
-    macd_sig=macd.ewm(span=9).mean(); macd_hist=macd-macd_sig
-
-    fig=make_subplots(rows=3,cols=1,shared_xaxes=True,
-        row_heights=[0.6,0.2,0.2],vertical_spacing=0.03,
-        subplot_titles=[f"{pair_name} — Price","RSI","MACD"])
-
-    # Candlestick
-    if "Open" in df.columns:
-        fig.add_trace(go.Candlestick(x=dates,open=df["Open"],high=df["High"],
-            low=df["Low"],close=close,name="Price",
-            increasing_line_color="#3fb950",decreasing_line_color="#f85149"),row=1,col=1)
+    # ── STRATEGY 8: VOLUME CONFIRMATION ───────────────────
+    if "Volume" in df_d.columns:
+        v=df_d["Volume"]
+        avg_vol=float(v.rolling(20).mean().iloc[-1])
+        cur_vol=float(v.iloc[-1])
+        vol_ratio=cur_vol/avg_vol if avg_vol>0 else 1.0
+        # Volume confirms direction
+        price_up=cl>pc
+        if vol_ratio>=1.3 and price_up:     vol_sig="BUY"
+        elif vol_ratio>=1.3 and not price_up: vol_sig="SELL"
+        elif vol_ratio>=0.8 and price_up:   vol_sig="BUY"
+        elif vol_ratio>=0.8:                vol_sig="SELL"
+        else:                               vol_sig="WAIT"
+        vol_ok=vol_ratio>0.7
     else:
-        fig.add_trace(go.Scatter(x=dates,y=close,name="Price",line=dict(color="#58a6ff",width=2)),row=1,col=1)
+        vol_sig="WAIT"; vol_ok=True; vol_ratio=1.0
 
-    if show_indicators:
-        fig.add_trace(go.Scatter(x=dates,y=ema20, name="EMA20", line=dict(color="#ffd700",width=1,dash="dot")),row=1,col=1)
-        fig.add_trace(go.Scatter(x=dates,y=ema50, name="EMA50", line=dict(color="#ff7f50",width=1,dash="dot")),row=1,col=1)
-        fig.add_trace(go.Scatter(x=dates,y=ema200,name="EMA200",line=dict(color="#da70d6",width=1,dash="dash")),row=1,col=1)
-
-    # S/R lines
-    fig.add_hline(y=resistance,line_color="#f85149",line_dash="dash",annotation_text=f"R {round(resistance,4)}",annotation_position="right",row=1,col=1)
-    fig.add_hline(y=support,   line_color="#3fb950",line_dash="dash",annotation_text=f"S {round(support,4)}",  annotation_position="right",row=1,col=1)
-
-    # Trade levels
-    if entry:
-        color="#3fb950" if "BUY" in signal else "#f85149"
-        fig.add_hline(y=entry,line_color=color,   line_width=2,annotation_text=f"Entry {round(entry,5)}",annotation_position="left",row=1,col=1)
-        fig.add_hline(y=sl,   line_color="#f85149",line_width=1,line_dash="dash",annotation_text=f"SL {round(sl,5)}",   annotation_position="left",row=1,col=1)
-        fig.add_hline(y=tp1,  line_color="#3fb950",line_width=1,line_dash="dash",annotation_text=f"TP1 {round(tp1,5)}",annotation_position="left",row=1,col=1)
-        fig.add_hline(y=tp2,  line_color="#3fb950",line_width=1,line_dash="dot", annotation_text=f"TP2 {round(tp2,5)}",annotation_position="left",row=1,col=1)
-
-    # Signal arrow
-    last_price=float(close.iloc[-1])
-    fig.add_trace(go.Scatter(x=[dates[-1]],y=[last_price],mode="markers",
-        marker=dict(symbol="triangle-up" if "BUY" in signal else "triangle-down",
-        size=18,color="#3fb950" if "BUY" in signal else "#f85149"),name=f"{signal}"),row=1,col=1)
-
-    # RSI subplot
-    fig.add_trace(go.Scatter(x=dates,y=rsi,name="RSI",line=dict(color="#58a6ff",width=1)),row=2,col=1)
-    fig.add_hline(y=70,line_color="#f85149",line_dash="dot",row=2,col=1)
-    fig.add_hline(y=30,line_color="#3fb950",line_dash="dot",row=2,col=1)
-
-    # MACD subplot
-    colors=["#3fb950" if v>=0 else "#f85149" for v in macd_hist]
-    fig.add_trace(go.Bar(x=dates,y=macd_hist,name="MACD Hist",marker_color=colors),row=3,col=1)
-    fig.add_trace(go.Scatter(x=dates,y=macd,    name="MACD",   line=dict(color="#ffd700",width=1)),row=3,col=1)
-    fig.add_trace(go.Scatter(x=dates,y=macd_sig,name="Signal", line=dict(color="#ff7f50",width=1)),row=3,col=1)
-
-    fig.update_layout(
-        plot_bgcolor="#0d1117",paper_bgcolor="#0d1117",font=dict(color="#e6edf3"),
-        xaxis=dict(gridcolor="#21262d",rangeslider_visible=False),
-        yaxis=dict(gridcolor="#21262d"),height=700,
-        margin=dict(l=60,r=120,t=40,b=40),
-        legend=dict(bgcolor="#161b22",bordercolor="#30363d",borderwidth=1))
-    st.plotly_chart(fig,use_container_width=True)
-
-    # Why take this trade
-    st.subheader("💡 Why Take This Trade?")
-    month_ago=float(close.iloc[-22]) if len(close)>22 else float(close.iloc[0])
-    change_pct=round((last_price-month_ago)/month_ago*100,2)
-    trend_dir="uptrend" if float(ema20.iloc[-1])>float(ema200.iloc[-1]) else "downtrend"
-    ema_slope=float(ema20.iloc[-1])-float(ema20.iloc[-5])
-    last_rsi=round(float(rsi.iloc[-1]),1)
-    agree=("BUY" in signal and trend_dir=="uptrend") or ("SELL" in signal and trend_dir=="downtrend")
-    c1,c2=st.columns(2)
-    with c1:
-        st.markdown(f"""
-        <div style='background:#161b22;border-radius:10px;padding:14px;border-left:4px solid #0072ff'>
-        <b>📈 Price Movement Analysis</b><br><br>
-        • Price has moved <b>{"+" if change_pct>0 else ""}{change_pct}%</b> over 30 days<br>
-        • EMA20 is <b>{"rising ↗" if ema_slope>0 else "falling ↘"}</b> — momentum {"building" if ema_slope>0 else "fading"}<br>
-        • RSI at <b>{last_rsi}</b> — {"overbought" if last_rsi>70 else "oversold" if last_rsi<30 else "bullish" if last_rsi>55 else "bearish" if last_rsi<45 else "neutral"}<br>
-        • Overall structure: <b>{trend_dir.upper()}</b><br>
-        • Resistance: <b>{round(resistance,4)}</b> | Support: <b>{round(support,4)}</b>
-        </div>""",unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"""
-        <div style='background:#161b22;border-radius:10px;padding:14px;border-left:4px solid #ffd700'>
-        <b>🎯 Trade Reasoning</b><br><br>
-        • Signal: <b>{signal}</b><br>
-        • {"✅ Trading WITH the trend — HIGHER probability" if agree else "⚠️ Trading AGAINST trend — reduce position size"}<br>
-        • EMA stack: <b>{"Fully aligned ✅" if float(ema20.iloc[-1])>float(ema50.iloc[-1])>float(ema200.iloc[-1]) or float(ema20.iloc[-1])<float(ema50.iloc[-1])<float(ema200.iloc[-1]) else "Partially aligned ⚠️"}</b><br>
-        • Entry risk: <b>{"Low — price at key level" if abs(last_price-support)/last_price<0.005 or abs(last_price-resistance)/last_price<0.005 else "Moderate — mid-range entry"}</b>
-        </div>""",unsafe_allow_html=True)
-
-# ════════════════════════════════════════════════════════════
-# NEWS
-# ════════════════════════════════════════════════════════════
-def fetch_forex_news():
+    # ── STRATEGY 9: ADX TREND STRENGTH ────────────────────
+    # ADX measures trend strength (>25 = trending, >40 = strong)
     try:
-        r=requests.get("https://nfs.faireconomy.media/ff_calendar_thisweek.json",timeout=8)
-        if r.status_code==200:
-            return pd.DataFrame([{"Time":e.get("date","")[:16].replace("T"," "),
-                "Currency":e.get("currency",""),"Event":e.get("title",""),
-                "Impact":e.get("impact",""),"Forecast":e.get("forecast","—"),
-                "Previous":e.get("previous","—")} for e in r.json()[:30]])
-    except: pass
-    return pd.DataFrame([
-        {"Time":"Today 08:30","Currency":"USD","Event":"Non-Farm Payrolls","Impact":"High","Forecast":"180K","Previous":"175K"},
-        {"Time":"Today 10:00","Currency":"EUR","Event":"ECB Rate Decision","Impact":"High","Forecast":"4.5%","Previous":"4.5%"},
-        {"Time":"Today 13:30","Currency":"GBP","Event":"CPI y/y","Impact":"Medium","Forecast":"3.1%","Previous":"3.4%"},
-        {"Time":"Tomorrow 08:30","Currency":"USD","Event":"Jobless Claims","Impact":"Medium","Forecast":"220K","Previous":"215K"},
-        {"Time":"Tomorrow 14:00","Currency":"USD","Event":"FOMC Minutes","Impact":"High","Forecast":"—","Previous":"—"},
-    ])
+        tr_=pd.concat([h_-l_,(h_-c.shift()).abs(),(l_-c.shift()).abs()],axis=1).max(axis=1)
+        dm_plus=h_.diff(); dm_minus=-l_.diff()
+        dm_plus=dm_plus.where((dm_plus>dm_minus)&(dm_plus>0),0)
+        dm_minus=dm_minus.where((dm_minus>dm_plus)&(dm_minus>0),0)
+        atr14=tr_.rolling(14).mean()
+        di_plus=100*(dm_plus.rolling(14).mean()/atr14)
+        di_minus=100*(dm_minus.rolling(14).mean()/atr14)
+        dx=100*((di_plus-di_minus).abs()/(di_plus+di_minus))
+        adx=float(dx.rolling(14).mean().iloc[-1])
+        di_p=float(di_plus.iloc[-1]); di_m=float(di_minus.iloc[-1])
+        if adx>=25 and di_p>di_m:   adx_sig="BUY"
+        elif adx>=25 and di_m>di_p: adx_sig="SELL"
+        else:                        adx_sig="WAIT"
+        trend_strong=adx>=25
+    except:
+        adx_sig="WAIT"; adx=0; trend_strong=False
 
-def call_ai(prompt,max_tokens=1000):
-    try:
-        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
-        if not api_key: return "⚠️ Add ANTHROPIC_API_KEY to Streamlit secrets."
-        r=requests.post("https://api.anthropic.com/v1/messages",
-            headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
-            json={"model":"claude-sonnet-4-6","max_tokens":max_tokens,"messages":[{"role":"user","content":prompt}]},
-            timeout=30)
-        if r.status_code==200: return r.json()["content"][0]["text"]
-        return f"AI error {r.status_code}"
-    except Exception as e: return f"Error: {e}"
+    # ── COMBINE ALL 9 STRATEGIES ──────────────────────────
+    all_sigs=[ema_sig,rsi_sig,macd_sig,bb_sig,sr_sig,bos_sig,candle_sig,vol_sig,adx_sig]
+    buys=sum(1 for s in all_sigs if s=="BUY")
+    sells=sum(1 for s in all_sigs if s=="SELL")
+    total=len(all_sigs)
+
+    if buys>sells:
+        direction="BUY"; conf=round(buys/total*100)
+        final_sig="STRONG BUY" if buys>=7 else "BUY"
+    elif sells>buys:
+        direction="SELL"; conf=round(sells/total*100)
+        final_sig="STRONG SELL" if sells>=7 else "SELL"
+    else:
+        direction="WAIT"; conf=50; final_sig="WAIT"
+
+    # ── QUALITY FILTERS ───────────────────────────────────
+    # Only show signals that pass ALL key quality filters:
+    # 1. ATR filter: volatility must be meaningful (not too low)
+    atr_pct=atr/price*100
+    atr_ok=atr_pct>=0.2  # min 0.2% daily range
+
+    # 2. Candle body filter: candle must have meaningful body
+    candle_body_pct=body/full if full>0 else 0
+    candle_quality_ok=candle_body_pct>=0.1 or bull_engulf or bear_engulf or bull_pin or bear_pin
+
+    # 3. Weekly trend filter
+    if df_w is not None:
+        cw=df_w["Close"]; e20w=cw.ewm(span=20).mean(); e50w=cw.ewm(span=50).mean()
+        weekly_bull=float(e20w.iloc[-1])>float(e50w.iloc[-1])
+    else: weekly_bull=direction=="BUY"
+    weekly_ok=weekly_bull==(direction=="BUY") or direction=="WAIT"
+
+    # 4. Session filter
+    hour=datetime.datetime.utcnow().hour
+    session_ok=(7<=hour<=17) or (12<=hour<=21)
+    session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
+
+    # 5. MTF confirmation
+    def tf_sig(df_tf):
+        if df_tf is None: return "WAIT"
+        ct=df_tf["Close"]
+        if len(ct)<30: return "WAIT"
+        e20t=ct.ewm(span=20).mean().iloc[-1]; e50t=ct.ewm(span=50).mean().iloc[-1]
+        rt=get_rsi(ct)
+        if e20t>e50t and rt>52: return "BUY"
+        if e20t<e50t and rt<48: return "SELL"
+        if e20t>e50t: return "BUY"
+        if e20t<e50t: return "SELL"
+        return "WAIT"
+
+    sig_daily=ema_sig
+    sig_4h=tf_sig(df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>120 else df_4h)
+    sig_1h=tf_sig(df_1h.iloc[-60:]  if df_1h  is not None and len(df_1h)>60  else df_1h)
+
+    mtf_sigs=[s for s in [sig_daily,sig_4h,sig_1h] if s!="WAIT"]
+    mtf_buys=sum(1 for s in mtf_sigs if "BUY" in s)
+    mtf_sells=sum(1 for s in mtf_sigs if "SELL" in s)
+    mtf_ok=(mtf_buys>mtf_sells and direction=="BUY") or (mtf_sells>mtf_buys and direction=="SELL")
+    mtf_agree=f"BUY — {mtf_buys}/{len(mtf_sigs)} TFs" if mtf_buys>mtf_sells else f"SELL — {mtf_sells}/{len(mtf_sigs)} TFs" if mtf_sells>mtf_buys else "Mixed TFs"
+
+    # ── SPECIALIST WEIGHTING ──────────────────────────────
+    spec=SPECIALIST.get(pair_name,1.0)
+    adj_conf=min(99,round(conf*spec)) if direction!="WAIT" else 50
+
+    # ── GRADE (A/B/C/D) ───────────────────────────────────
+    agree_count=max(buys,sells)
+    filters_passed=sum([atr_ok,candle_quality_ok,weekly_ok,session_ok,mtf_ok])
+    # Grade A: 7+ strategies agree, 4+ filters pass, trend is strong
+    if adj_conf>=85 and agree_count>=7 and filters_passed>=4 and trend_strong: grade="A"
+    elif adj_conf>=75 and agree_count>=6 and filters_passed>=3: grade="B"
+    elif adj_conf>=62 and agree_count>=5 and filters_passed>=2: grade="C"
+    else: grade="D"
+
+    # Skip D-grade signals entirely — not worth showing
+    if grade=="D" and direction!="WAIT":
+        direction="WAIT"; final_sig="WAIT"
+
+    # ── TRADE LEVELS (ATR-based with better RR) ───────────
+    # Use 1.5x ATR for SL, targets at 1R/2R/3R
+    risk=atr*1.5
+    if direction=="BUY":
+        entry=price; sl=price-risk
+        tp1=price+risk      # 1:1
+        tp2=price+risk*2    # 1:2
+        tp3=price+risk*3    # 1:3
+    elif direction=="SELL":
+        entry=price; sl=price+risk
+        tp1=price-risk
+        tp2=price-risk*2
+        tp3=price-risk*3
+    else:
+        entry=price; sl=0; tp1=0; tp2=0; tp3=0
+
+    # ── MARKET CONDITION LABEL ────────────────────────────
+    if atr_pct>1.0:   vol_label="High volatility"
+    elif atr_pct>0.5: vol_label="Moderate market"
+    else:             vol_label="Low volatility"
+    if trend_strong:  trend_label="Strong trend"
+    else:             trend_label="Moderate trend"
+    if grade=="A":    action_label="take full position"
+    elif grade=="B":  action_label="use standard size"
+    elif grade=="C":  action_label="reduce size"
+    else:             action_label="avoid or wait"
+    market_cond=f"{vol_label} — {trend_label} — {action_label}"
+
+    # ── STRATEGY NAMES FOR DISPLAY ────────────────────────
+    strat_names="EMA Stack · RSI · MACD · Bollinger · S/R · BOS · Candle · Volume · ADX"
+
+    return {
+        "pair":pair_name,"symbol":symbol,"direction":direction,"signal":final_sig,
+        "confidence":adj_conf,"grade":grade,"entry":entry,"sl":sl,
+        "tp1":tp1,"tp2":tp2,"tp3":tp3,"atr":round(atr,5),
+        "sig_daily":sig_daily,"sig_4h":sig_4h,"sig_1h":sig_1h,
+        "mtf_agree":mtf_agree,"market_cond":market_cond,
+        "candle_ok":candle_quality_ok,"vol_ok":vol_ok,
+        "weekly_ok":weekly_ok,"session_ok":session_ok,"mtf_ok":mtf_ok,
+        "session_label":session_label,"strategies":strat_names,
+        "agree":f"{agree_count}/{total} agree","rsi":round(rsi_val,1),
+        "adx":round(adx,1),"candle_name":candle_name,
+        "buys":buys,"sells":sells,
+        "scan_time":scan_time,
+        "time_ago":time_ago(scan_time),
+    }
 
 # ════════════════════════════════════════════════════════════
-# SIDEBAR
+# RENDER SIGNAL CARD
 # ════════════════════════════════════════════════════════════
-with st.sidebar:
-    st.title("🚀 Sparro FX AI")
-    st.divider()
-    tier_label="👑 Admin" if is_admin else ("⚡ Premium" if premium else "🆓 Free")
-    st.markdown(f"**{tier_label}**")
-    st.caption(f"📧 {st.session_state.user_email}")
-    if not premium and not is_admin:
-        st.warning("🔒 Free Plan")
-        if st.button("⚡ Upgrade — $24/mo"): st.info("Pay via Whop/Gumroad then contact admin.")
-    else: st.success("✅ Active")
-    if st.button("🚪 Logout"):
-        for k in ["logged_in","user_email","user_tier","is_admin"]: st.session_state[k]=DEFAULTS.get(k,"")
-        st.session_state.logged_in=False; st.rerun()
-    st.divider()
-    pages=["📊 Scanner","🏆 Trade of the Day","🔬 Deep Analysis",
-           "📐 Multi-Timeframe","💹 Currency Strength","🎯 Precision Entry",
-           "🏢 Prop Firm Tools","🗞️ News Analysis","🤖 AI Strategy Builder",
-           "📸 AI Chart Analysis","🔔 Notifications","📓 Trade Journal",
-           "📈 Performance","💰 Risk Calculator","⚙️ Settings","💎 Pricing"]
-    if is_admin: pages.insert(0,"👑 Admin Panel")
-    page=st.radio("Navigate",pages)
+def render_signal_card(sig):
+    if sig is None or sig["direction"]=="WAIT": return
+    d=sig["direction"].lower()
+    grade=sig["grade"]
+    grade_class=f"grade-{grade.lower()}"
+    dir_emoji="📉" if d=="sell" else "📈"
+    pair_emoji="🥇" if "Gold" in sig["pair"] else "₿" if "Bitcoin" in sig["pair"] else "€" if "EUR" in sig["pair"] else "£" if "GBP" in sig["pair"] else "💹"
+
+    # Filter checks
+    filters=[
+        ("🕯️","Candle",sig["candle_ok"]),
+        ("📊","Volatility",sig["vol_ok"]),
+        ("📅","Weekly",sig["weekly_ok"]),
+        ("🕐","Session",sig["session_ok"]),
+        ("📐","MTF",sig["mtf_ok"]),
+    ]
+    filter_html="".join([f"<div class='filter-item'><span class='filter-label'>{f[1]}</span><span class='filter-check'>{'✅' if f[2] else '⚠️'}</span></div>" for f in filters])
+
+    # TF signals
+    def tf_color(s): return "buy" if "BUY" in s else "sell" if "SELL" in s else "wait"
+
+    dp=5 if sig["entry"]<100 else 2
+
+    st.markdown(f"""
+    <div class='signal-card {d}'>
+      <div class='signal-header'>
+        <div>
+          <span>{pair_emoji} {dir_emoji} </span>
+          <span class='signal-direction {d}'>{sig["direction"]}</span>
+          <span class='{grade_class} grade-badge'>{grade}</span>
+          <span class='strat-badge smc'>SMC</span>
+          <span class='strat-badge mtf'>MTF</span>
+        </div>
+        <div class='confidence-pct'>{sig["confidence"]}%</div>
+      </div>
+
+      <div class='pair-name'>{sig["pair"]}</div>
+      <div class='mtf-line'>MTF: {sig["mtf_agree"]}</div>
+      <div class='market-condition'>📊 {sig["market_cond"]}</div>
+
+      <div class='price-grid'>
+        <div class='price-cell'><div class='price-label'>ENTRY</div><div class='price-value entry'>{round(sig["entry"],dp)}</div></div>
+        <div class='price-cell'><div class='price-label'>STOP</div><div class='price-value sl'>{round(sig["sl"],dp)}</div></div>
+        <div class='price-cell'><div class='price-label'>TP1</div><div class='price-value tp'>{round(sig["tp1"],dp)}</div></div>
+        <div class='price-cell'><div class='price-label'>TP2</div><div class='price-value tp'>{round(sig["tp2"],dp)}</div></div>
+        <div class='price-cell'><div class='price-label'>TP3</div><div class='price-value tp'>{round(sig["tp3"],dp)}</div></div>
+      </div>
+
+      <div class='filter-row'>{filter_html}</div>
+
+      <div class='tf-row'>
+        <div class='tf-cell'><div class='tf-label'>Daily</div><div class='tf-signal {tf_color(sig["sig_daily"])}'>{sig["sig_daily"]}</div></div>
+        <div class='tf-cell'><div class='tf-label'>4H</div><div class='tf-signal {tf_color(sig["sig_4h"])}'>{sig["sig_4h"]}</div></div>
+        <div class='tf-cell'><div class='tf-label'>1H</div><div class='tf-signal {tf_color(sig["sig_1h"])}'>{sig["sig_1h"]}</div></div>
+      </div>
+
+      <div class='strat-row'>✅ <b>{sig["strategies"]}</b></div>
+      <div style='display:flex;justify-content:space-between;align-items:center;margin-top:8px'>
+        <span style='font-size:11px;color:#8b949e'>{sig["agree"]} · RSI {sig["rsi"]} · ADX {sig.get("adx","—")} · 🕯️ {sig.get("candle_name","—")}</span>
+        <span style='font-size:11px;color:#8b949e;background:#21262d;padding:2px 8px;border-radius:10px'>🕐 {sig.get("time_ago","just now")}</span>
+      </div>
+    </div>
+    """,unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
-# PAGE: ADMIN PANEL
+# HEADER
+# ════════════════════════════════════════════════════════════
+now=datetime.datetime.utcnow().strftime("%H:%M UTC")
+tier_label="👑 Admin" if is_admin else ("⚡ Pro" if premium else "🆓 Free")
+
+st.markdown(f"""
+<div class='app-header'>
+  <div class='app-logo'>Sparro <span>FX AI</span></div>
+  <div style='display:flex;align-items:center;gap:10px'>
+    <span style='font-size:12px;color:#8b949e'>{now}</span>
+    <span style='font-size:12px;background:#21262d;padding:3px 8px;border-radius:6px'>{tier_label}</span>
+  </div>
+</div>
+""",unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════
+# TAB NAVIGATION
+# ════════════════════════════════════════════════════════════
+tabs_free=["⚡ Pulse","👁 Watchlist","📊 Scanner","💰 Risk Calc","💎 Upgrade"]
+tabs_premium=["⚡ Pulse","👁 Watchlist","📊 Scanner","🏆 Trade of Day",
+              "📐 Multi-TF","💹 Strength","🎯 Precision","🏢 Prop Firm",
+              "🗞️ News","🤖 AI Strategy","📸 Chart AI","🔔 Alerts",
+              "📓 Journal","📈 Performance","💰 Risk Calc","⚙️ Settings"]
+tabs_admin=["👑 Admin"]+tabs_premium
+tabs=tabs_admin if is_admin else (tabs_premium if premium else tabs_free)
+
+# Render tab buttons
+active=st.session_state.active_tab
+tab_html="<div class='tab-nav'>"
+for t in tabs:
+    ac="active" if t==active else ""
+    tab_html+=f"<div class='tab-btn {ac}' onclick=\"\">{t}</div>"
+tab_html+="</div>"
+
+# Use selectbox for navigation (styled like tabs)
+selected_tab=st.selectbox("",tabs,index=tabs.index(active) if active in tabs else 0,
+    label_visibility="collapsed",key="tab_select")
+st.session_state.active_tab=selected_tab
+page=selected_tab
+
+st.markdown("<div class='content-area'>",unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════
+# PAGE: ADMIN
 # ════════════════════════════════════════════════════════════
 if "Admin" in page:
-    st.title("👑 Admin Panel")
+    st.markdown("### 👑 Admin Panel")
     all_users=get_all_users()
     prem=[u for u in all_users if u.get("tier")=="premium"]
-    free=[u for u in all_users if u.get("tier")=="free"]
-    c1,c2,c3=st.columns(3)
-    c1.metric("👥 Total Users",len(all_users)); c2.metric("⚡ Premium",len(prem)); c3.metric("🆓 Free",len(free))
-    st.divider()
+    st.markdown(f"""
+    <div class='metric-row'>
+      <div class='metric-card'><div class='metric-label'>Total Users</div><div class='metric-value'>{len(all_users)}</div></div>
+      <div class='metric-card'><div class='metric-label'>Premium</div><div class='metric-value' style='color:#ffd200'>{len(prem)}</div></div>
+      <div class='metric-card'><div class='metric-label'>Free</div><div class='metric-value'>{len(all_users)-len(prem)}</div></div>
+    </div>""",unsafe_allow_html=True)
     if all_users:
-        st.subheader("👥 All Users")
         df_u=pd.DataFrame(all_users)
         cols=[c for c in ["email","tier","is_active","created_at"] if c in df_u.columns]
         st.dataframe(df_u[cols],use_container_width=True)
     st.divider()
-    st.subheader("⚡ Manage User")
-    ug_email=st.text_input("User email")
+    ug=st.text_input("User email to manage")
     c1,c2=st.columns(2)
-    if c1.button("⬆️ Upgrade to Premium"):
-        st.success(f"✅ Done!") if update_user_tier(ug_email,"premium") else st.error("❌ Failed.")
-    if c2.button("⬇️ Move to Free"):
-        st.success(f"✅ Done!") if update_user_tier(ug_email,"free") else st.error("❌ Failed.")
+    if c1.button("⬆️ Upgrade Premium",use_container_width=True):
+        st.success("✅ Done!") if update_tier(ug,"premium") else st.error("❌ Failed.")
+    if c2.button("⬇️ Set Free",use_container_width=True):
+        st.success("✅ Done!") if update_tier(ug,"free") else st.error("❌ Failed.")
     st.divider()
-    st.subheader("➕ Create User")
     c1,c2,c3=st.columns(3)
-    ne=c1.text_input("Email",key="ne"); np_=c2.text_input("Password",type="password",key="np"); nt=c3.selectbox("Tier",["free","premium"])
-    if st.button("Create User"):
+    ne=c1.text_input("Email",key="ne"); np_=c2.text_input("Pass",type="password",key="np"); nt=c3.selectbox("Tier",["free","premium"])
+    if st.button("➕ Create User",use_container_width=True):
         ok,err=create_user(ne,np_,nt)
-        if ok: st.success("✅ Created!")
-        else: st.error(f"❌ Failed: {err}")
-    st.divider()
-    st.subheader("🗑️ Delete User")
+        st.success("✅ Created!") if ok else st.error(f"❌ {err}")
     de=st.text_input("Email to delete")
-    if st.button("Delete",type="primary"):
+    if st.button("🗑️ Delete User",type="primary",use_container_width=True):
         st.success("✅ Deleted!") if delete_user(de) else st.error("❌ Failed.")
+
+# ════════════════════════════════════════════════════════════
+# PAGE: PULSE (Live Signals)
+# ════════════════════════════════════════════════════════════
+elif "Pulse" in page:
+    # Daily briefing
+    with st.expander("📰 Daily Market Briefing + Risk Warning"):
+        st.markdown(f"""
+        **{datetime.date.today().strftime('%A, %B %d %Y')}**
+
+        Markets are open. Grade A/B signals aim for 70%+ win rate.
+        Always use proper risk management — never risk more than 2% per trade.
+
+        ⚠️ *Trading involves significant risk of loss. Past performance does not guarantee future results.*
+        """)
+
+    st.markdown(f"""
+    <div style='background:#161b22;border-radius:12px;padding:14px;margin-bottom:12px'>
+      <div style='display:flex;align-items:center;gap:8px;margin-bottom:4px'>
+        <span class='live-dot'></span>
+        <b style='font-size:16px'>Live Pulse Signal</b>
+      </div>
+      <p style='color:#8b949e;font-size:12px;margin:0'>Quality-filtered signals. Candle quality · ATR filter · Weekly trend · Session timing · MTF confirmation. Grade A/B signals aim for 70%+ win rate.</p>
+      <p style='color:#8b949e;font-size:11px;margin:6px 0 0'>Scan: {now}</p>
+    </div>
+    """,unsafe_allow_html=True)
+
+    if not premium:
+        st.warning("🔒 Free plan shows 5 assets. Upgrade for all 10 + Grade A/B system.")
+
+    if st.button("🔄 Refresh Signals",use_container_width=True):
+        st.rerun()
+
+    compact=st.toggle("Compact view",value=False)
+    signals=[]
+    prog=st.progress(0); items=list(pairs.items())
+    status=st.empty()
+    for i,(name,sym) in enumerate(items):
+        status.caption(f"Analysing {name}...")
+        sig=analyse_pair(sym,name)
+        if sig and sig["direction"]!="WAIT": signals.append(sig)
+        prog.progress((i+1)/len(items))
+    prog.empty(); status.empty()
+
+    # Sort by confidence
+    signals.sort(key=lambda x:x["confidence"],reverse=True)
+    grade_a=[s for s in signals if s["grade"]=="A"]
+    grade_b=[s for s in signals if s["grade"]=="B"]
+    grade_c=[s for s in signals if s["grade"]=="C"]
+
+    # Count badge
+    total_sigs=len(signals)
+    grade_counts={"A":len(grade_a),"B":len(grade_b),"C":len(grade_c)}
+    badge_html=" ".join([f"<span class='grade-{g.lower()} grade-badge'>{g} x{n}</span>" for g,n in grade_counts.items() if n>0])
+    st.markdown(f"<p style='margin:8px 0'><b>{total_sigs} signal(s):</b> {badge_html} &nbsp; <span style='color:#8b949e;font-size:12px'>Specialists shown first</span></p>",unsafe_allow_html=True)
+
+    if not signals:
+        st.info("⏳ No strong signals right now. Market may be consolidating — check back later.")
+    else:
+        for sig in signals:
+            if not compact: render_signal_card(sig)
+            else:
+                d_color="#3fb950" if "BUY" in sig["direction"] else "#f85149"
+                dp=5 if sig["entry"]<100 else 2
+                st.markdown(f"""
+                <div style='background:#161b22;border-radius:10px;padding:10px;margin-bottom:6px;
+                  border-left:3px solid {d_color};display:flex;justify-content:space-between;align-items:center'>
+                  <div>
+                    <b>{sig["pair"]}</b>
+                    <span class='grade-{sig["grade"].lower()} grade-badge' style='margin-left:6px'>{sig["grade"]}</span>
+                    <span style='color:{d_color};font-weight:700;margin-left:6px'>{sig["direction"]}</span>
+                  </div>
+                  <div style='text-align:right'>
+                    <div style='color:#ffd200;font-weight:800'>{sig["confidence"]}%</div>
+                    <div style='font-size:11px;color:#8b949e'>E:{round(sig["entry"],dp)} SL:{round(sig["sl"],dp)}</div>
+                  </div>
+                </div>""",unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════
+# PAGE: WATCHLIST
+# ════════════════════════════════════════════════════════════
+elif "Watchlist" in page:
+    st.markdown("### 👁 Watchlist")
+    selected=st.multiselect("Select pairs to watch",list(ALL_PAIRS.keys()),
+        default=list(pairs.keys())[:3])
+    if st.button("🔄 Analyse Watchlist",use_container_width=True):
+        for name in selected:
+            sym=ALL_PAIRS[name]
+            with st.spinner(f"Analysing {name}..."):
+                sig=analyse_pair(sym,name)
+            if sig: render_signal_card(sig)
+            else: st.warning(f"No data for {name}")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: SCANNER
 # ════════════════════════════════════════════════════════════
 elif "Scanner" in page:
-    st.title("📊 Market Scanner")
-    if not premium: st.warning("🔒 Free plan: 5 assets. Upgrade for all 10 + Grade system.")
-    results=[]; prog=st.progress(0); items=list(pairs.items())
-    for i,(name,sym) in enumerate(items):
-        strats,conf,sig,buys,sells=run_all_strategies(sym)
-        grade,adj_conf,grade_note=get_signal_grade(conf,buys,sells,name)
-        results.append({"Asset":name,"Signal":sig,
-            "Grade":f"Grade {grade}" if premium else "🔒",
-            "Confidence":f"{adj_conf}%" if premium else "🔒",
-            "Strategies":f"{max(buys,sells)}/8" if premium else "🔒"})
-        prog.progress((i+1)/len(items))
-    prog.empty()
-    scanner=pd.DataFrame(results)
-    c1,c2=st.columns(2)
-    with c1:
-        st.subheader("🚀 Top Buys")
-        st.dataframe(scanner[scanner["Signal"].str.contains("BUY",na=False)].head(3),use_container_width=True)
-    with c2:
-        st.subheader("📉 Top Sells")
-        st.dataframe(scanner[scanner["Signal"].str.contains("SELL",na=False)].head(3),use_container_width=True)
-    st.subheader("📊 Full Scanner")
-    st.dataframe(scanner,use_container_width=True)
+    st.markdown("### 📊 Market Scanner")
+    if st.button("🔄 Run Full Scan",use_container_width=True):
+        results=[]; prog=st.progress(0); items=list(pairs.items())
+        for i,(name,sym) in enumerate(items):
+            sig=analyse_pair(sym,name)
+            if sig:
+                results.append({"Asset":name,"Signal":sig["signal"],
+                    "Grade":sig["grade"],"Confidence":f"{sig['confidence']}%",
+                    "Entry":round(sig["entry"],5),"SL":round(sig["sl"],5),
+                    "TP1":round(sig["tp1"],5),"Strategies":sig["agree"]})
+            prog.progress((i+1)/len(items))
+        prog.empty()
+        if results:
+            df=pd.DataFrame(results).sort_values("Confidence",ascending=False)
+            st.dataframe(df,use_container_width=True)
+    else:
+        st.info("Tap 'Run Full Scan' to analyse all assets.")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: TRADE OF THE DAY
 # ════════════════════════════════════════════════════════════
-elif "Trade of the Day" in page:
-    st.title("🏆 Trade of the Day")
+elif "Trade of Day" in page:
+    st.markdown("### 🏆 Trade of the Day")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    best={"conf":0,"sig":"WAIT","name":"","sym":"","strats":{},"grade":"D","buys":0,"sells":0}
-    with st.spinner("Scanning all assets..."):
+    with st.spinner("Finding best opportunity..."):
+        best=None
         for name,sym in ALL_PAIRS.items():
-            strats,conf,sig,buys,sells=run_all_strategies(sym)
-            grade,adj_conf,_=get_signal_grade(conf,buys,sells,name)
-            if sig!="WAIT" and adj_conf>best["conf"]:
-                best={"conf":adj_conf,"sig":sig,"name":name,"sym":sym,"strats":strats,"grade":grade,"buys":buys,"sells":sells}
-    grade_colors={"A":"#3fb950","B":"#0072ff","C":"#ffd200","D":"#f85149"}
-    grade_color=grade_colors.get(best["grade"],"#8b949e")
-    c1,c2,c3,c4=st.columns(4)
-    c1.metric("🏆 Asset",best["name"]); c2.metric("📡 Signal",best["sig"])
-    c3.metric("🎯 Confidence",f"{best['conf']}%"); c4.metric("📊 Grade",f"Grade {best['grade']}")
-    st.progress(best["conf"]/100)
-    st.markdown(f"<div style='background:{grade_color}22;border:1px solid {grade_color};border-radius:10px;padding:12px;text-align:center'><b style='color:{grade_color}'>Grade {best['grade']} Signal</b> — {get_signal_grade(best['conf'],best['buys'],best['sells'],best['name'])[2]}</div>",unsafe_allow_html=True)
-    entry,sl,tp1,tp2,tp3,atr=get_trade_setup(best["sym"],best["sig"])
-    if entry:
-        st.divider()
-        c1,c2,c3,c4,c5=st.columns(5)
-        c1.metric("Entry",f"{entry:.5f}"); c2.metric("SL",f"{sl:.5f}")
-        c3.metric("TP1",f"{tp1:.5f}"); c4.metric("TP2",f"{tp2:.5f}"); c5.metric("TP3",f"{tp3:.5f}")
+            sig=analyse_pair(sym,name)
+            if sig and sig["direction"]!="WAIT":
+                if best is None or sig["confidence"]>best["confidence"]: best=sig
+    if best:
+        st.markdown(f"<p style='color:#8b949e'>Best setup across all {len(ALL_PAIRS)} assets right now:</p>",unsafe_allow_html=True)
+        render_signal_card(best)
         col1,col2=st.columns(2)
-        if col1.button("🔔 Telegram Alert"):
-            ok=notify_trade(best["name"],best["sig"],best["conf"],best["grade"],entry,sl,tp1,tp2,tp3)
-            st.success("✅ Sent!") if ok else st.error("❌ Check Notifications.")
-        if col2.button("➕ Add to Journal"):
-            st.session_state.trade_journal.append({"Date":str(datetime.date.today()),"Asset":best["name"],
-                "Signal":best["sig"],"Grade":best["grade"],"Entry":entry,"SL":sl,"TP1":tp1,
-                "Confidence":best["conf"],"Result":"Open"})
-            st.success("✅ Added!")
-    st.divider()
-    if best["sym"]: show_price_chart(best["sym"],best["name"],best["sig"],entry,sl,tp1,tp2)
-
-# ════════════════════════════════════════════════════════════
-# PAGE: DEEP ANALYSIS
-# ════════════════════════════════════════════════════════════
-elif "Deep Analysis" in page:
-    st.title("🔬 Deep Strategy Analysis")
-    if not premium: st.error("🔒 Premium only."); st.stop()
-    selected=st.selectbox("Choose Asset",list(ALL_PAIRS.keys())); sym=ALL_PAIRS[selected]
-    with st.spinner("Running 8 strategies..."):
-        strats,conf,sig,buys,sells=run_all_strategies(sym)
-    grade,adj_conf,grade_note=get_signal_grade(conf,buys,sells,selected)
-    grade_colors={"A":"#3fb950","B":"#0072ff","C":"#ffd200","D":"#f85149"}
-    gc=grade_colors.get(grade,"#8b949e")
-    c1,c2,c3,c4=st.columns(4)
-    c1.metric("Signal",sig); c2.metric("Confidence",f"{adj_conf}%"); c3.metric("Grade",f"Grade {grade}"); c4.metric("Strategies","8")
-    st.progress(adj_conf/100)
-    st.markdown(f"<div style='background:{gc}22;border:1px solid {gc};border-radius:10px;padding:10px;text-align:center'><b style='color:{gc}'>Grade {grade}</b> — {grade_note}</div>",unsafe_allow_html=True)
-    st.divider()
-    for name,(s,reason) in strats.items():
-        color="#238636" if s=="BUY" else "#da3633" if s=="SELL" else "#9e6a03"
-        icon="🟢" if s=="BUY" else "🔴" if s=="SELL" else "🟡"
-        st.markdown(f"""<div style='background:#161b22;border-radius:10px;padding:12px;margin-bottom:8px;border-left:4px solid {color}'>
-          <b>{icon} {name}</b> <span style='background:{color};color:#fff;padding:2px 8px;border-radius:12px;font-size:12px'>{s}</span><br>
-          <small style='color:#8b949e'>{reason}</small></div>""",unsafe_allow_html=True)
-    c1,c2,c3=st.columns(3); c1.metric("🟢 Buys",buys); c2.metric("🔴 Sells",sells); c3.metric("🟡 Neutral",8-buys-sells)
-    entry,sl,tp1,tp2,tp3,_=get_trade_setup(sym,sig)
-    if entry and sig!="WAIT":
-        st.divider()
-        c1,c2,c3,c4,c5=st.columns(5)
-        c1.metric("Entry",f"{entry:.5f}"); c2.metric("SL",f"{sl:.5f}")
-        c3.metric("TP1",f"{tp1:.5f}"); c4.metric("TP2",f"{tp2:.5f}"); c5.metric("TP3",f"{tp3:.5f}")
-        if adj_conf>=87: st.success(f"✅ Grade A — HIGHEST quality setup")
-        elif adj_conf>=75: st.info(f"✅ Grade B — Good setup")
-        elif adj_conf>=62: st.warning(f"⚠️ Grade C — Moderate setup, reduce size")
-        else: st.error(f"❌ Grade D — Weak signal, consider waiting")
-        if st.button("🔔 Telegram Alert"):
-            ok=notify_trade(selected,sig,adj_conf,grade,entry,sl,tp1,tp2,tp3)
-            st.success("✅ Sent!") if ok else st.error("❌ Check Notifications.")
-    st.divider()
-    show_price_chart(sym,selected,sig,entry,sl,tp1,tp2)
+        if col1.button("🔔 Send to Telegram",use_container_width=True):
+            token=st.session_state.telegram_token; chat_id=st.session_state.telegram_chat_id
+            if token and chat_id:
+                dp=5 if best["entry"]<100 else 2
+                msg=f"🏆 *Trade of the Day*\n{best['direction']} *{best['pair']}*\nGrade {best['grade']} | {best['confidence']}%\nEntry: `{round(best['entry'],dp)}`\nSL: `{round(best['sl'],dp)}`\nTP1: `{round(best['tp1'],dp)}`"
+                r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                    data={"chat_id":chat_id,"text":msg,"parse_mode":"Markdown"},timeout=5)
+                st.success("✅ Sent!") if r.status_code==200 else st.error("❌ Failed.")
+            else: st.error("Set up Telegram in Alerts tab first.")
+        if col2.button("➕ Add to Journal",use_container_width=True):
+            st.session_state.trade_journal.append({"Date":str(datetime.date.today()),
+                "Asset":best["pair"],"Signal":best["signal"],"Grade":best["grade"],
+                "Entry":best["entry"],"SL":best["sl"],"TP1":best["tp1"],
+                "Confidence":best["confidence"],"Result":"Open"})
+            st.success("✅ Added to journal!")
+    else: st.info("⏳ No strong signals right now.")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: MULTI-TIMEFRAME
 # ════════════════════════════════════════════════════════════
-elif "Multi-Timeframe" in page:
-    st.title("📐 Multi-Timeframe Analysis")
+elif "Multi-TF" in page:
+    st.markdown("### 📐 Multi-Timeframe Analysis")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    selected=st.selectbox("Choose Asset",list(ALL_PAIRS.keys())); sym=ALL_PAIRS[selected]
-    with st.spinner("Analysing all timeframes..."):
-        tf_df=multi_timeframe_analysis(sym)
-    st.subheader(f"📊 {selected} — All Timeframes")
-    st.dataframe(tf_df,use_container_width=True)
-    st.divider()
-    buys_tf=len(tf_df[tf_df["Signal"].str.contains("BUY",na=False)])
-    sells_tf=len(tf_df[tf_df["Signal"].str.contains("SELL",na=False)])
-    total_tf=len(tf_df)
-    overall="STRONG BUY" if buys_tf>=4 else "BUY" if buys_tf>=3 else "STRONG SELL" if sells_tf>=4 else "SELL" if sells_tf>=3 else "WAIT"
-    alignment=round(max(buys_tf,sells_tf)/total_tf*100)
-    c1,c2,c3=st.columns(3)
-    c1.metric("Overall Signal",overall); c2.metric("TF Alignment",f"{alignment}%"); c3.metric("Bullish TFs",f"{buys_tf}/{total_tf}")
-    st.progress(alignment/100)
-    if alignment>=80: st.success(f"✅ STRONG alignment — {alignment}% of timeframes agree")
-    elif alignment>=60: st.warning(f"⚠️ MODERATE alignment — {alignment}%")
-    else: st.error(f"❌ WEAK alignment — {alignment}%. Wait for more confluence.")
-    st.divider()
-    st.subheader("💡 Timeframe Trading Guide")
-    st.markdown("""
-    | Timeframe | Best For | Hold Time |
-    |-----------|----------|-----------|
-    | 1H | Day Trading entries | 4-24 hours |
-    | 4H | Swing trade confirmation | 1-5 days |
-    | Daily | Trend direction | 1-4 weeks |
-    | Weekly | Big picture bias | Months |
-    | Monthly | Long-term position | Months+ |
-    
-    **Rule:** Always trade in the direction of the Daily + Weekly trend. Use 1H/4H for entry timing.
-    """)
+    selected=st.selectbox("Asset",list(ALL_PAIRS.keys()))
+    if st.button("Analyse",use_container_width=True):
+        sym=ALL_PAIRS[selected]
+        timeframes=[("1H","1h","5d"),("4H","1h","1mo"),("Daily","1d","6mo"),("Weekly","1wk","1y"),("Monthly","1mo","2y")]
+        rows=[]
+        for label,interval,period in timeframes:
+            df=fetch(sym,period,interval)
+            if df is None: rows.append({"TF":label,"Signal":"N/A","RSI":"N/A","Trend":"N/A"}); continue
+            c=df["Close"]; e20=c.ewm(span=20).mean().iloc[-1]; e50=c.ewm(span=50).mean().iloc[-1]
+            rsi=round(get_rsi(c),1)
+            if e20>e50 and rsi>55: sig="STRONG BUY"; trend="📈 Bullish"
+            elif e20>e50: sig="BUY"; trend="📈 Bullish"
+            elif e20<e50 and rsi<45: sig="STRONG SELL"; trend="📉 Bearish"
+            elif e20<e50: sig="SELL"; trend="📉 Bearish"
+            else: sig="WAIT"; trend="➡️ Neutral"
+            rows.append({"Timeframe":label,"Signal":sig,"RSI":rsi,"Trend":trend})
+        df_tf=pd.DataFrame(rows)
+        st.dataframe(df_tf,use_container_width=True)
+        buys=len(df_tf[df_tf["Signal"].str.contains("BUY",na=False)])
+        sells=len(df_tf[df_tf["Signal"].str.contains("SELL",na=False)])
+        alignment=round(max(buys,sells)/len(df_tf)*100)
+        overall="STRONG BUY" if buys>=4 else "BUY" if buys>=3 else "STRONG SELL" if sells>=4 else "SELL" if sells>=3 else "WAIT"
+        st.markdown(f"""
+        <div class='metric-row'>
+          <div class='metric-card'><div class='metric-label'>Overall</div><div class='metric-value' style='font-size:14px'>{overall}</div></div>
+          <div class='metric-card'><div class='metric-label'>Alignment</div><div class='metric-value'>{alignment}%</div></div>
+          <div class='metric-card'><div class='metric-label'>Bullish TFs</div><div class='metric-value'>{buys}/5</div></div>
+        </div>""",unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: CURRENCY STRENGTH
 # ════════════════════════════════════════════════════════════
-elif "Currency Strength" in page:
-    st.title("💹 Currency Strength Meter")
+elif "Strength" in page:
+    st.markdown("### 💹 Currency Strength Meter")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    with st.spinner("Calculating strength of 8 currencies..."):
-        strength=calculate_currency_strength()
-    sorted_strength=dict(sorted(strength.items(),key=lambda x:x[1],reverse=True))
-    st.subheader("📊 Currency Rankings (Strongest → Weakest)")
-    for currency,score in sorted_strength.items():
+    CURR_PAIRS={"USD":["EURUSD=X","GBPUSD=X","USDJPY=X"],"EUR":["EURUSD=X","EURGBP=X"],
+                "GBP":["GBPUSD=X","EURGBP=X"],"JPY":["USDJPY=X"],"AUD":["AUDUSD=X"],
+                "CHF":["USDCHF=X"],"CAD":["USDCAD=X"],"XAU":["GC=F"]}
+    with st.spinner("Calculating strength..."):
+        strength={}
+        for currency,syms in CURR_PAIRS.items():
+            scores=[]
+            for sym in syms:
+                df=fetch(sym,"1mo","1d")
+                if df is None: continue
+                c=df["Close"]; change=(float(c.iloc[-1])-float(c.iloc[-5]))/float(c.iloc[-5])*100
+                scores.append(change if sym.startswith(currency[:3]) else -change)
+            strength[currency]=round(np.mean(scores),3) if scores else 0
+    vals=list(strength.values()); mn=min(vals); mx=max(vals); rng=mx-mn if mx!=mn else 1
+    norm={k:round((v-mn)/rng*100,1) for k,v in strength.items()}
+    sorted_s=dict(sorted(norm.items(),key=lambda x:x[1],reverse=True))
+    for currency,score in sorted_s.items():
         color="#3fb950" if score>=60 else "#f85149" if score<=40 else "#ffd200"
-        emoji="🟢" if score>=60 else "🔴" if score<=40 else "🟡"
         st.markdown(f"""
-        <div style='background:#161b22;border-radius:8px;padding:10px;margin-bottom:6px'>
-        {emoji} <b>{currency}</b> &nbsp;
-        <div style='background:#21262d;border-radius:4px;height:20px;width:100%;margin-top:4px'>
-          <div style='background:{color};width:{score}%;height:20px;border-radius:4px'></div>
-        </div>
-        <small style='color:#8b949e'>{score}/100</small>
+        <div class='strength-item'>
+          <div class='strength-header'>
+            <b>{currency}</b><span style='color:{color}'>{score}/100</span>
+          </div>
+          <div class='strength-bar-bg'>
+            <div class='strength-bar-fill' style='width:{score}%;background:{color}'></div>
+          </div>
         </div>""",unsafe_allow_html=True)
-    st.divider()
-    st.subheader("💡 Best Pairs to Trade Right Now")
-    currencies=list(sorted_strength.keys())
+    currencies=list(sorted_s.keys())
     if len(currencies)>=2:
-        strongest=currencies[0]; weakest=currencies[-1]
-        st.success(f"🚀 **BUY {strongest}** against **{weakest}** — biggest strength divergence")
-        st.info(f"📊 Strongest currency: **{strongest}** ({sorted_strength[strongest]}/100)")
-        st.info(f"📊 Weakest currency:   **{weakest}** ({sorted_strength[weakest]}/100)")
+        st.divider()
+        st.success(f"🚀 Best pair: BUY **{currencies[0]}** vs **{currencies[-1]}**")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: PRECISION ENTRY
 # ════════════════════════════════════════════════════════════
-elif "Precision Entry" in page:
-    st.title("🎯 Precision Entry Tools")
+elif "Precision" in page:
+    st.markdown("### 🎯 Precision Entry Tools")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    col1,col2=st.columns(2)
-    with col1:
-        selected=st.selectbox("Asset",list(ALL_PAIRS.keys())); sym=ALL_PAIRS[selected]
-        _,conf,sig,buys,sells=run_all_strategies(sym)
-        direction=st.selectbox("Direction",["BUY","SELL"],index=0 if "BUY" in sig else 1)
-    with col2:
-        account_size=st.number_input("Account Size ($)",min_value=100.0,value=1000.0)
-        risk_pct=st.slider("Risk per trade (%)",0.5,5.0,2.0,step=0.5)
-
-    if st.button("🎯 Calculate Precision Entries"):
-        entries,atr,price=get_precision_entry(sym,direction,account_size,risk_pct)
-        st.divider()
-        st.subheader(f"🎯 {direction} Entry Options for {selected}")
-        st.caption(f"Current Price: {round(price,5)} | ATR(14): {atr}")
-        for entry_type,vals in entries.items():
-            color="#1a472a" if direction=="BUY" else "#3d1f1f"
-            st.markdown(f"""
-            <div style='background:{color};border-radius:10px;padding:14px;margin-bottom:10px'>
-            <b>📍 {entry_type}</b><br>
-            Entry: <code>{round(vals['entry'],5)}</code> | 
-            SL: <code>{round(vals['sl'],5)}</code> | 
-            TP1: <code>{round(vals['tp1'],5)}</code> | 
-            TP2: <code>{round(vals['tp2'],5)}</code> | 
-            TP3: <code>{round(vals['tp3'],5)}</code><br>
-            Lot Size: <b>{vals['lot_size']}</b> | Risk: <b>${round(vals['risk_amount'],2)}</b>
-            </div>""",unsafe_allow_html=True)
-        st.info("💡 **Aggressive**: Enter now at market. **Standard**: Best balance of risk/reward. **Conservative**: Wait for pullback to EMA20.")
+    selected=st.selectbox("Asset",list(ALL_PAIRS.keys()))
+    sym=ALL_PAIRS[selected]
+    c1,c2=st.columns(2)
+    direction=c1.selectbox("Direction",["BUY","SELL"])
+    account=c2.number_input("Account ($)",min_value=100.0,value=1000.0)
+    risk_pct=st.slider("Risk %",0.5,5.0,2.0,step=0.5)
+    if st.button("Calculate Entries",use_container_width=True):
+        df=fetch(sym,"3mo","1d")
+        if df:
+            price=float(df["Close"].iloc[-1]); atr=get_atr(df); risk_amt=account*risk_pct/100
+            entries={}
+            if direction=="BUY":
+                entries["Aggressive"]={"entry":price,"sl":price-atr,"tp1":price+atr,"tp2":price+atr*2,"tp3":price+atr*3}
+                entries["Standard"]={"entry":price,"sl":price-atr*1.5,"tp1":price+atr*1.5,"tp2":price+atr*3,"tp3":price+atr*4.5}
+                entries["Conservative"]={"entry":float(df["Close"].ewm(span=20).mean().iloc[-1]),"sl":price-atr*2,"tp1":price+atr*2,"tp2":price+atr*4,"tp3":price+atr*6}
+            else:
+                entries["Aggressive"]={"entry":price,"sl":price+atr,"tp1":price-atr,"tp2":price-atr*2,"tp3":price-atr*3}
+                entries["Standard"]={"entry":price,"sl":price+atr*1.5,"tp1":price-atr*1.5,"tp2":price-atr*3,"tp3":price-atr*4.5}
+                entries["Conservative"]={"entry":float(df["Close"].ewm(span=20).mean().iloc[-1]),"sl":price+atr*2,"tp1":price-atr*2,"tp2":price-atr*4,"tp3":price-atr*6}
+            dp=5 if price<100 else 2
+            for etype,vals in entries.items():
+                sl_dist=abs(vals["entry"]-vals["sl"])
+                lot=max(0.01,min(round(risk_amt/(sl_dist*10000)*0.01,2),10.0)) if sl_dist>0 else 0.01
+                color="#0a1a0a" if direction=="BUY" else "#1a0a0a"
+                st.markdown(f"""
+                <div style='background:{color};border-radius:10px;padding:12px;margin-bottom:8px'>
+                <b>📍 {etype}</b><br>
+                <div class='price-grid' style='margin:8px 0'>
+                  <div class='price-cell'><div class='price-label'>ENTRY</div><div class='price-value entry'>{round(vals['entry'],dp)}</div></div>
+                  <div class='price-cell'><div class='price-label'>STOP</div><div class='price-value sl'>{round(vals['sl'],dp)}</div></div>
+                  <div class='price-cell'><div class='price-label'>TP1</div><div class='price-value tp'>{round(vals['tp1'],dp)}</div></div>
+                  <div class='price-cell'><div class='price-label'>TP2</div><div class='price-value tp'>{round(vals['tp2'],dp)}</div></div>
+                  <div class='price-cell'><div class='price-label'>TP3</div><div class='price-value tp'>{round(vals['tp3'],dp)}</div></div>
+                </div>
+                Lot: <b>{lot}</b> | Risk: <b>${round(risk_amt,2)}</b>
+                </div>""",unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
-# PAGE: PROP FIRM TOOLS
+# PAGE: PROP FIRM
 # ════════════════════════════════════════════════════════════
 elif "Prop Firm" in page:
-    st.title("🏢 Prop Firm Tools")
+    st.markdown("### 🏢 Prop Firm Tools")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    st.info("Calculate safe position sizes and track your challenge progress for major prop firms.")
-    col1,col2=st.columns(2)
-    with col1:
-        firm=st.selectbox("Prop Firm",["FTMO","MyForexFunds","The5ers","FundedNext"])
-        account_size=st.number_input("Account Size ($)",min_value=1000.0,value=10000.0)
-    with col2:
-        current_profit=st.number_input("Current Profit ($)",value=0.0)
-        current_loss=st.number_input("Current Loss ($)",value=0.0,min_value=0.0)
-
-    result=prop_firm_calculator(account_size,firm,current_profit,current_loss)
-    st.divider()
-    st.subheader(f"📊 {firm} Challenge Rules — ${account_size:,.0f} Account")
-    c1,c2,c3=st.columns(3)
-    c1.metric("Daily Loss Limit",   f"${result['daily_loss_limit']:,.0f}",  f"{result['daily_loss_pct']}%")
-    c2.metric("Max Loss Limit",     f"${result['max_loss_limit']:,.0f}",    f"{result['max_loss_pct']}%")
-    c3.metric("Profit Target",      f"${result['profit_target']:,.0f}",     f"{result['profit_target_pct']}%")
-
-    st.divider()
-    st.subheader("📈 Your Current Status")
-    c1,c2,c3=st.columns(3)
-    c1.metric("Remaining Daily Limit",f"${result['remaining_daily']:,.0f}")
-    c2.metric("Remaining Max Limit",  f"${result['remaining_max']:,.0f}")
-    c3.metric("Profit Still Needed",  f"${result['profit_needed']:,.0f}")
-
-    st.divider()
-    daily_used=abs(current_loss)/result['daily_loss_limit'] if result['daily_loss_limit']>0 else 0
-    if daily_used>=1: st.error("🚨 DAILY LOSS LIMIT REACHED — Stop trading today!")
-    elif daily_used>=0.7: st.warning(f"⚠️ {round(daily_used*100)}% of daily loss limit used — be careful")
-    else: st.success(f"✅ {round(daily_used*100)}% of daily limit used — safe to trade")
-    st.progress(min(daily_used,1.0))
-
-    st.subheader("💰 Safe Lot Size for Next Trade")
-    st.metric("Recommended Lot Size",f"{result['safe_lot']} lots")
-    st.caption("Based on remaining daily limit with conservative risk management")
-
-    st.divider()
-    st.subheader("📋 Prop Firm Trading Rules")
+    c1,c2=st.columns(2)
+    firm=c1.selectbox("Firm",["FTMO","MyForexFunds","The5ers","FundedNext"])
+    account=c2.number_input("Account ($)",min_value=1000.0,value=10000.0)
+    c3,c4=st.columns(2)
+    profit=c3.number_input("Current Profit ($)",value=0.0)
+    loss=c4.number_input("Current Loss ($)",value=0.0,min_value=0.0)
+    rules={"FTMO":(5,10,10),"MyForexFunds":(5,10,8),"The5ers":(4,8,8),"FundedNext":(5,10,10)}
+    dl_pct,ml_pct,pt_pct=rules.get(firm,(5,10,10))
+    dl=account*dl_pct/100; ml=account*ml_pct/100; pt=account*pt_pct/100
+    rem_daily=max(0,dl-loss); rem_max=max(0,ml-loss); need=max(0,pt-profit)
+    used_pct=loss/dl if dl>0 else 0
     st.markdown(f"""
-    **{firm} Key Rules:**
-    - ❌ Never lose more than **{result['daily_loss_pct']}%** in one day (${result['daily_loss_limit']:,.0f})
-    - ❌ Never lose more than **{result['max_loss_pct']}%** total (${result['max_loss_limit']:,.0f})
-    - ✅ Reach **{result['profit_target_pct']}%** profit target (${result['profit_target']:,.0f})
-    - 📊 Always use the recommended lot size above
-    - 🕐 Trade during high-liquidity sessions (London + NY)
-    - 📰 Avoid trading during high-impact news events
-    - 🎯 Only take Grade A and Grade B signals
-    """)
+    <div class='metric-row'>
+      <div class='metric-card'><div class='metric-label'>Daily Limit</div><div class='metric-value' style='color:#f85149'>${dl:,.0f}</div></div>
+      <div class='metric-card'><div class='metric-label'>Max Loss</div><div class='metric-value' style='color:#f85149'>${ml:,.0f}</div></div>
+      <div class='metric-card'><div class='metric-label'>Target</div><div class='metric-value' style='color:#3fb950'>${pt:,.0f}</div></div>
+    </div>
+    <div class='metric-row'>
+      <div class='metric-card'><div class='metric-label'>Remaining Daily</div><div class='metric-value'>${rem_daily:,.0f}</div></div>
+      <div class='metric-card'><div class='metric-label'>Remaining Max</div><div class='metric-value'>${rem_max:,.0f}</div></div>
+      <div class='metric-card'><div class='metric-label'>Still Need</div><div class='metric-value' style='color:#ffd200'>${need:,.0f}</div></div>
+    </div>""",unsafe_allow_html=True)
+    st.progress(min(used_pct,1.0))
+    if used_pct>=1: st.error("🚨 DAILY LIMIT REACHED — Stop trading today!")
+    elif used_pct>=0.7: st.warning(f"⚠️ {round(used_pct*100)}% of daily limit used")
+    else: st.success(f"✅ {round(used_pct*100)}% used — safe to trade")
+    safe_lot=max(0.01,round(rem_daily*0.01/20,2))
+    st.info(f"💰 Recommended lot size: **{safe_lot} lots**")
 
 # ════════════════════════════════════════════════════════════
-# PAGE: NEWS ANALYSIS
+# PAGE: NEWS
 # ════════════════════════════════════════════════════════════
 elif "News" in page:
-    st.title("🗞️ News Analysis")
+    st.markdown("### 🗞️ Market News & Economic Calendar")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    with st.spinner("Fetching calendar..."): news_df=fetch_forex_news()
-    st.subheader("📅 Economic Calendar — This Week")
-    st.dataframe(news_df,use_container_width=True)
+    try:
+        r=requests.get("https://nfs.faireconomy.media/ff_calendar_thisweek.json",timeout=8)
+        if r.status_code==200:
+            events=r.json()[:25]
+            for e in events:
+                impact=e.get("impact",""); cls="news-item" if impact=="High" else "news-item medium" if impact=="Medium" else "news-item low"
+                st.markdown(f"""
+                <div class='{cls}'>
+                  <b>{e.get('currency','')} — {e.get('title','')}</b>
+                  <span style='float:right;color:#8b949e;font-size:11px'>{impact}</span><br>
+                  <small style='color:#8b949e'>{e.get('date','')[:16].replace('T',' ')} | Forecast: {e.get('forecast','—')} | Prev: {e.get('previous','—')}</small>
+                </div>""",unsafe_allow_html=True)
+        else: st.error("Could not fetch news.")
+    except: st.error("News feed unavailable.")
+
     st.divider()
-    selected=st.selectbox("Asset for AI analysis",list(ALL_PAIRS.keys()))
-    if st.button("🤖 AI News Analysis"):
-        with st.spinner("Analysing news impact..."):
-            analysis=call_ai(f"You are a professional forex news analyst. Analyse how this week's economic calendar affects {selected}.\nCalendar:\n{news_df.to_string()}\n\nProvide:\n1. Which events affect {selected} most\n2. Bullish/Bearish/Neutral bias\n3. Times to avoid trading\n4. Biggest move potential\nBe concise, use bullet points.",1000)
-        st.markdown(f"<div class='news-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
-    if "Impact" in news_df.columns:
-        high=news_df[news_df["Impact"]=="High"]
-        if not high.empty:
-            st.subheader("⚠️ High-Impact Events")
-            for _,row in high.iterrows():
-                st.error(f"🔴 {row.get('Time','')} | {row.get('Currency','')} — {row.get('Event','')} | Forecast: {row.get('Forecast','—')}")
+    selected=st.selectbox("AI news analysis for:",list(ALL_PAIRS.keys()))
+    if st.button("🤖 Analyse News Impact",use_container_width=True):
+        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
+        if not api_key: st.error("Add ANTHROPIC_API_KEY to secrets.")
+        else:
+            with st.spinner("Analysing..."):
+                r=requests.post("https://api.anthropic.com/v1/messages",
+                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
+                    json={"model":"claude-sonnet-4-6","max_tokens":600,
+                        "messages":[{"role":"user","content":f"Analyse this week's economic calendar impact on {selected}. Give: 1) Bias direction 2) Key events to watch 3) Times to avoid. Be concise."}]},timeout=30)
+                if r.status_code==200:
+                    st.markdown(f"<div class='news-item'>{r.json()['content'][0]['text'].replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: AI STRATEGY BUILDER
 # ════════════════════════════════════════════════════════════
 elif "AI Strategy" in page:
-    st.title("🤖 AI Strategy Builder")
+    st.markdown("### 🤖 AI Strategy Builder")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    col1,col2=st.columns(2)
-    with col1:
-        style     =st.selectbox("Style",["Day Trading","Scalping","Swing Trading"])
-        risk_level=st.selectbox("Risk",["Conservative","Moderate","Aggressive"])
-        fav_pairs =st.multiselect("Favourite Pairs",list(ALL_PAIRS.keys()),default=["EUR/USD","Gold (XAU/USD)"])
-    with col2:
-        session   =st.selectbox("Session",["London","New York","Asian","All Sessions"])
-        experience=st.selectbox("Experience",["Beginner","Intermediate","Advanced"])
-        custom    =st.text_area("Extra requirements",placeholder="e.g. only breakouts, trend following, specific indicators...")
-    if st.button("🚀 Build My Strategy",type="primary"):
-        prompt=f"""You are a professional forex trading strategy builder.
-Build a complete, detailed {style} strategy.
-Trader: {experience} level, {risk_level} risk, trades {session} session.
-Favourite pairs: {', '.join(fav_pairs)}.
-Extra requirements: {custom}
-
-Include these sections:
-1. 📋 Strategy Name & Summary
-2. ✅ Exact Entry Rules (step by step)
-3. 🛑 Stop Loss Placement (specific rules)
-4. 🎯 Take Profit Targets (TP1=1R, TP2=2R, TP3=3R or specific levels)
-5. ⏰ Best Timeframes to use
-6. 💰 Position Sizing & Risk Rules
-7. 📊 Best Assets for this strategy
-8. 📰 News filter rules (when to avoid)
-9. ❌ What NOT to do
-10. 📈 Backtesting tips
-
-Be very specific and practical. Real rules a trader can follow immediately."""
-        with st.spinner("🤖 Building your strategy..."):
-            strategy=call_ai(prompt,1500)
-            st.session_state.ai_strategy=strategy
+    c1,c2=st.columns(2)
+    style=c1.selectbox("Style",["Day Trading","Scalping","Swing Trading"])
+    risk=c2.selectbox("Risk",["Conservative","Moderate","Aggressive"])
+    fav=st.multiselect("Pairs",list(ALL_PAIRS.keys()),default=["EUR/USD","Gold (XAU/USD)"])
+    session=st.selectbox("Session",["London","New York","Asian","All"])
+    exp=st.selectbox("Experience",["Beginner","Intermediate","Advanced"])
+    custom=st.text_area("Extra requirements",placeholder="e.g. only breakouts, SMC style...")
+    if st.button("🚀 Build Strategy",type="primary",use_container_width=True):
+        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
+        if not api_key: st.error("Add ANTHROPIC_API_KEY to secrets.")
+        else:
+            with st.spinner("Building..."):
+                prompt=f"Build a complete {style} strategy for {', '.join(fav)}. {exp} level, {risk} risk, {session} session. {custom}. Include: Entry rules, SL placement, TP1/2/3, timeframes, risk rules, what to avoid."
+                r=requests.post("https://api.anthropic.com/v1/messages",
+                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
+                    json={"model":"claude-sonnet-4-6","max_tokens":1200,"messages":[{"role":"user","content":prompt}]},timeout=30)
+                if r.status_code==200:
+                    strategy=r.json()["content"][0]["text"]
+                    st.session_state.ai_strategy=strategy
     if st.session_state.ai_strategy:
-        st.divider()
-        st.subheader("📋 Your Custom Strategy")
         st.markdown(f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
-        if st.button("💾 Save to Journal"):
-            st.session_state.trade_journal.append({"Date":str(datetime.date.today()),"Asset":"Strategy",
-                "Signal":"AI BUILT","Grade":"A","Entry":0,"SL":0,"TP1":0,"Confidence":0,
-                "Result":"Strategy","Notes":st.session_state.ai_strategy[:300]})
-            st.success("✅ Saved!")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: AI CHART ANALYSIS
 # ════════════════════════════════════════════════════════════
-elif "Chart Analysis" in page:
-    st.title("📸 AI Chart Analysis")
+elif "Chart AI" in page:
+    st.markdown("### 📸 AI Chart Analysis")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    st.info("Upload a screenshot of any chart and AI will analyse it for you.")
     uploaded=st.file_uploader("Upload chart screenshot",type=["png","jpg","jpeg","webp"])
-    pair_context=st.selectbox("Which pair is this?",["Not sure"]+list(ALL_PAIRS.keys()))
-    tf_context=st.selectbox("Timeframe",["Not sure","1M","5M","15M","1H","4H","Daily","Weekly"])
-    extra=st.text_area("Any specific questions?",placeholder="e.g. Is this a good entry? Where is support? What pattern is forming?")
-
-    if uploaded and st.button("🔍 Analyse Chart",type="primary"):
+    pair_ctx=st.selectbox("Pair",["Not sure"]+list(ALL_PAIRS.keys()))
+    tf_ctx=st.selectbox("Timeframe",["Not sure","1M","5M","15M","1H","4H","Daily"])
+    question=st.text_area("Your question",placeholder="Is this a good entry? Where is support?")
+    if uploaded and st.button("🔍 Analyse",type="primary",use_container_width=True):
         import base64
-        img_bytes=uploaded.read()
-        img_b64=base64.b64encode(img_bytes).decode()
+        img_b64=base64.b64encode(uploaded.read()).decode()
         ext=uploaded.name.split(".")[-1].lower()
         media_type=f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
-        prompt=f"""You are a professional forex technical analyst.
-Analyse this trading chart screenshot.
-Pair: {pair_context} | Timeframe: {tf_context}
-Trader's question: {extra if extra else 'Give a complete technical analysis'}
-
-Provide:
-1. 📊 Overall trend direction
-2. 🔑 Key support and resistance levels you can see
-3. 📐 Any chart patterns (head & shoulders, triangles, flags, etc.)
-4. 🕯️ Candlestick patterns visible
-5. 📈 Indicator readings if visible (RSI, MACD, EMAs)
-6. 🎯 Recommended trade direction (BUY/SELL/WAIT)
-7. 💰 Suggested entry, stop loss and take profit
-8. ⚠️ Key risks or things to watch
-
-Be specific and actionable."""
-        with st.spinner("🤖 Analysing your chart..."):
-            try:
-                api_key=st.secrets.get("ANTHROPIC_API_KEY","")
-                if not api_key: st.error("⚠️ Add ANTHROPIC_API_KEY to secrets."); st.stop()
+        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
+        if not api_key: st.error("Add ANTHROPIC_API_KEY to secrets.")
+        else:
+            with st.spinner("Analysing chart..."):
                 r=requests.post("https://api.anthropic.com/v1/messages",
                     headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
-                    json={"model":"claude-sonnet-4-6","max_tokens":1200,
+                    json={"model":"claude-sonnet-4-6","max_tokens":1000,
                         "messages":[{"role":"user","content":[
                             {"type":"image","source":{"type":"base64","media_type":media_type,"data":img_b64}},
-                            {"type":"text","text":prompt}
+                            {"type":"text","text":f"Analyse this {pair_ctx} {tf_ctx} chart. {question if question else 'Give full technical analysis with entry, SL and TP recommendations.'}"}
                         ]}]},timeout=40)
                 if r.status_code==200:
-                    analysis=r.json()["content"][0]["text"]
-                    st.subheader("🤖 AI Analysis")
-                    st.markdown(f"<div class='strategy-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
-                else: st.error(f"API error {r.status_code}")
-            except Exception as e: st.error(f"Error: {e}")
+                    st.markdown(f"<div class='strategy-card'>{r.json()['content'][0]['text'].replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
+                else: st.error(f"Error {r.status_code}")
 
 # ════════════════════════════════════════════════════════════
-# PAGE: NOTIFICATIONS
+# PAGE: ALERTS
 # ════════════════════════════════════════════════════════════
-elif "Notifications" in page:
-    st.title("🔔 Telegram Notifications")
+elif "Alerts" in page:
+    st.markdown("### 🔔 Telegram Alerts")
     if not premium: st.error("🔒 Premium only."); st.stop()
     with st.expander("📖 Setup Guide"):
-        st.markdown("""
-1. Search `@BotFather` on Telegram → `/newbot` → copy **Bot Token**
-2. Search `@userinfobot` → send message → copy **Chat ID**
-3. Paste below and test!
-        """)
-    token  =st.text_input("Bot Token",  value=st.session_state.telegram_token,  type="password")
-    chat_id=st.text_input("Chat ID",    value=st.session_state.telegram_chat_id)
-    if st.button("💾 Save"):
+        st.markdown("1. Search `@BotFather` on Telegram → `/newbot` → copy **Token**\n2. Search `@userinfobot` → copy **Chat ID**\n3. Paste below + test!")
+    token=st.text_input("Bot Token",value=st.session_state.telegram_token,type="password")
+    chat_id=st.text_input("Chat ID",value=st.session_state.telegram_chat_id)
+    if st.button("💾 Save",use_container_width=True):
         st.session_state.telegram_token=token; st.session_state.telegram_chat_id=chat_id; st.success("✅ Saved!")
-    if st.button("🧪 Send Test"):
-        ok=send_telegram(token,chat_id,"✅ *Sparro FX AI* — Telegram connected! Grade A signals will be sent here. 🚀")
-        st.success("✅ Check Telegram!") if ok else st.error("❌ Failed — check token and chat ID.")
-    st.divider()
-    threshold=st.slider("Minimum confidence to alert (%)",60,95,st.session_state.notification_threshold)
+    if st.button("🧪 Test Message",use_container_width=True):
+        r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id":chat_id,"text":"✅ *Sparro FX AI* connected! Grade A signals will be sent here. 🚀","parse_mode":"Markdown"},timeout=5)
+        st.success("✅ Check Telegram!") if r.status_code==200 else st.error("❌ Failed — check token and chat ID.")
+    threshold=st.slider("Min confidence to alert",60,95,st.session_state.notification_threshold)
     st.session_state.notification_threshold=threshold
-    st.info(f"Alerts fire when confidence ≥ {threshold}% (Grade A/B signals only recommended)")
 
 # ════════════════════════════════════════════════════════════
-# PAGE: TRADE JOURNAL
+# PAGE: JOURNAL
 # ════════════════════════════════════════════════════════════
 elif "Journal" in page:
-    st.title("📓 Trade Journal")
+    st.markdown("### 📓 Trade Journal")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    with st.expander("➕ Log a Trade"):
-        c1,c2,c3,c4=st.columns(4)
+    with st.expander("➕ Log Trade"):
+        c1,c2=st.columns(2)
         j_asset=c1.selectbox("Asset",list(ALL_PAIRS.keys()))
         j_sig=c2.selectbox("Signal",["STRONG BUY","BUY","SELL","STRONG SELL"])
+        c3,c4=st.columns(2)
         j_grade=c3.selectbox("Grade",["A","B","C","D"])
         j_result=c4.selectbox("Result",["Open","Win","Loss","Breakeven"])
-        c5,c6,c7=st.columns(3)
+        c5,c6=st.columns(2)
         j_entry=c5.number_input("Entry",format="%.5f")
-        j_conf=c6.slider("Confidence",0,100,75)
-        j_notes=c7.text_input("Notes")
-        if st.button("Save Trade"):
+        j_notes=c6.text_input("Notes")
+        if st.button("Save",use_container_width=True):
             st.session_state.trade_journal.append({"Date":str(datetime.date.today()),
                 "Asset":j_asset,"Signal":j_sig,"Grade":j_grade,"Entry":j_entry,
-                "Confidence":j_conf,"Result":j_result,"Notes":j_notes})
+                "Result":j_result,"Notes":j_notes})
             st.success("✅ Saved!")
     if st.session_state.trade_journal:
-        df=pd.DataFrame(st.session_state.trade_journal); st.dataframe(df,use_container_width=True)
+        df=pd.DataFrame(st.session_state.trade_journal)
+        st.dataframe(df,use_container_width=True)
         wins=len(df[df["Result"]=="Win"]); loss=len(df[df["Result"]=="Loss"]); total=wins+loss
         wr=round(wins/total*100,1) if total>0 else 0
-        c1,c2,c3,c4=st.columns(4)
-        c1.metric("Total",len(df)); c2.metric("Win Rate",f"{wr}%")
-        c3.metric("Open",len(df[df["Result"]=="Open"])); c4.metric("Wins",wins)
-        if "Grade" in df.columns:
-            st.subheader("Performance by Grade")
-            grade_perf=df.groupby("Grade")["Result"].value_counts().unstack(fill_value=0)
-            st.dataframe(grade_perf,use_container_width=True)
-    else: st.info("No trades yet. Use Trade of the Day to auto-log setups.")
+        st.markdown(f"""
+        <div class='metric-row'>
+          <div class='metric-card'><div class='metric-label'>Total</div><div class='metric-value'>{len(df)}</div></div>
+          <div class='metric-card'><div class='metric-label'>Win Rate</div><div class='metric-value' style='color:#3fb950'>{wr}%</div></div>
+          <div class='metric-card'><div class='metric-label'>Open</div><div class='metric-value' style='color:#ffd200'>{len(df[df["Result"]=="Open"])}</div></div>
+        </div>""",unsafe_allow_html=True)
+    else: st.info("No trades yet.")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: PERFORMANCE
 # ════════════════════════════════════════════════════════════
 elif "Performance" in page:
-    st.title("📈 Performance Dashboard")
+    st.markdown("### 📈 Performance Dashboard")
     if not premium: st.error("🔒 Premium only."); st.stop()
     if not st.session_state.trade_journal: st.info("Log trades to see stats."); st.stop()
     df=pd.DataFrame(st.session_state.trade_journal)
-    wins=len(df[df["Result"]=="Win"]); loss=len(df[df["Result"]=="Loss"])
-    be=len(df[df["Result"]=="Breakeven"]); total=wins+loss+be
+    wins=len(df[df["Result"]=="Win"]); loss=len(df[df["Result"]=="Loss"]); total=wins+loss
     wr=round(wins/total*100,1) if total>0 else 0
-    c1,c2,c3,c4=st.columns(4)
-    c1.metric("Total Trades",total); c2.metric("Wins",wins); c3.metric("Losses",loss); c4.metric("Win Rate",f"{wr}%")
-    st.divider()
+    st.markdown(f"""
+    <div class='metric-row'>
+      <div class='metric-card'><div class='metric-label'>Trades</div><div class='metric-value'>{total}</div></div>
+      <div class='metric-card'><div class='metric-label'>Win Rate</div><div class='metric-value' style='color:#3fb950'>{wr}%</div></div>
+      <div class='metric-card'><div class='metric-label'>Wins</div><div class='metric-value'>{wins}</div></div>
+    </div>""",unsafe_allow_html=True)
     if "Asset" in df.columns:
         st.subheader("By Asset")
         st.dataframe(df.groupby("Asset")["Result"].value_counts().unstack(fill_value=0),use_container_width=True)
     if "Grade" in df.columns:
-        st.subheader("By Signal Grade")
+        st.subheader("By Grade")
         st.dataframe(df.groupby("Grade")["Result"].value_counts().unstack(fill_value=0),use_container_width=True)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: RISK CALCULATOR
 # ════════════════════════════════════════════════════════════
-elif "Risk" in page:
-    st.title("💰 Risk Calculator")
-    c1,c2=st.columns(2)
-    with c1:
-        balance=st.number_input("Balance ($)",min_value=10.0,value=1000.0)
-        risk_pct=st.slider("Risk %",0.5,10.0,2.0,step=0.5)
-        sl_pips=st.number_input("Stop Loss (pips)",min_value=1.0,value=20.0)
-        pip_val=st.number_input("Pip value per 0.01 lot",value=0.10)
-        rr=st.slider("Risk:Reward",1,5,2)
-    risk_amt=balance*risk_pct/100; lot=round(risk_amt/(sl_pips*pip_val/0.01)*0.01,2)
-    with c2:
-        st.metric("Risk Amount",f"${risk_amt:.2f}"); st.metric("Lot Size",f"{lot} lots")
-        st.metric("Potential Profit",f"${risk_amt*rr:.2f}"); st.metric("R:R",f"1:{rr}")
-        st.metric("Account After Loss",f"${balance-risk_amt:.2f}")
-        st.metric("Account After Win", f"${balance+(risk_amt*rr):.2f}")
+elif "Risk Calc" in page:
+    st.markdown("### 💰 Risk Calculator")
+    balance=st.number_input("Balance ($)",min_value=10.0,value=1000.0)
+    risk_pct=st.slider("Risk %",0.5,10.0,2.0,step=0.5)
+    sl_pips=st.number_input("Stop Loss (pips)",min_value=1.0,value=20.0)
+    pip_val=st.number_input("Pip value per 0.01 lot",value=0.10)
+    rr=st.slider("Risk:Reward",1,5,2)
+    risk_amt=balance*risk_pct/100
+    lot=round(risk_amt/(sl_pips*pip_val/0.01)*0.01,2) if sl_pips>0 else 0.01
+    st.markdown(f"""
+    <div class='metric-row'>
+      <div class='metric-card'><div class='metric-label'>Risk Amount</div><div class='metric-value' style='color:#f85149'>${risk_amt:.2f}</div></div>
+      <div class='metric-card'><div class='metric-label'>Lot Size</div><div class='metric-value'>{lot}</div></div>
+      <div class='metric-card'><div class='metric-label'>Potential Profit</div><div class='metric-value' style='color:#3fb950'>${risk_amt*rr:.2f}</div></div>
+    </div>
+    <div class='metric-row'>
+      <div class='metric-card'><div class='metric-label'>After Loss</div><div class='metric-value'>${balance-risk_amt:.2f}</div></div>
+      <div class='metric-card'><div class='metric-label'>R:R Ratio</div><div class='metric-value'>1:{rr}</div></div>
+      <div class='metric-card'><div class='metric-label'>After Win</div><div class='metric-value' style='color:#3fb950'>${balance+(risk_amt*rr):.2f}</div></div>
+    </div>""",unsafe_allow_html=True)
     st.progress(risk_pct/10)
-    if risk_pct<=1: st.success("✅ Ultra conservative — good for prop firms")
-    elif risk_pct<=2: st.success("✅ Conservative — good for consistency")
+    if risk_pct<=2: st.success("✅ Conservative — good for consistency")
     elif risk_pct<=5: st.warning("⚠️ Moderate — manage carefully")
-    else: st.error("🚨 High risk — professionals only")
+    else: st.error("🚨 High risk")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: SETTINGS
 # ════════════════════════════════════════════════════════════
 elif "Settings" in page:
-    st.title("⚙️ Settings")
+    st.markdown("### ⚙️ Settings")
+    st.markdown(f"**Account:** {st.session_state.user_email}")
+    st.markdown(f"**Plan:** {st.session_state.user_tier.title()}")
+    st.divider()
     st.subheader("🔑 Change Password")
-    old_pass=st.text_input("Current Password",type="password")
-    new_pass=st.text_input("New Password",type="password")
-    new_pass2=st.text_input("Confirm New Password",type="password")
-    if st.button("Update Password"):
+    old=st.text_input("Current Password",type="password")
+    new=st.text_input("New Password",type="password")
+    new2=st.text_input("Confirm New",type="password")
+    if st.button("Update Password",use_container_width=True):
         user=get_user(st.session_state.user_email)
-        if user and user["password_hash"]==hash_password(old_pass):
-            if new_pass==new_pass2 and len(new_pass)>=6:
-                try:
-                    requests.patch(supabase_url(f"users?email=eq.{st.session_state.user_email}"),
-                        headers=get_supabase_headers(),json={"password_hash":hash_password(new_pass)})
-                    st.success("✅ Password updated!")
-                except: st.error("❌ Failed.")
+        if user and user.get("password_hash")==hash_pw(old):
+            if new==new2 and len(new)>=6:
+                requests.patch(sb_url(f"users?email=eq.{st.session_state.user_email}"),
+                    headers=get_headers(),json={"password_hash":hash_pw(new)})
+                st.success("✅ Password updated!")
             else: st.error("❌ Passwords don't match or too short.")
         else: st.error("❌ Current password incorrect.")
     st.divider()
-    st.subheader("🔔 Telegram")
-    t=st.text_input("Bot Token",value=st.session_state.telegram_token,type="password")
-    c=st.text_input("Chat ID",value=st.session_state.telegram_chat_id)
-    if st.button("Save Telegram"):
-        st.session_state.telegram_token=t; st.session_state.telegram_chat_id=c; st.success("✅ Saved!")
-    st.divider()
-    st.subheader("🔑 API Key Status")
-    api_key=st.secrets.get("ANTHROPIC_API_KEY","")
-    if api_key: st.success("✅ Anthropic API key configured — AI features active")
-    else: st.error("❌ No Anthropic API key — add to Streamlit secrets")
+    if st.button("🚪 Logout",use_container_width=True):
+        for k in ["logged_in","user_email","user_tier","is_admin"]:
+            st.session_state[k]=DEFAULTS.get(k,"")
+        st.session_state.logged_in=False; st.rerun()
 
 # ════════════════════════════════════════════════════════════
-# PAGE: PRICING
+# PAGE: UPGRADE
 # ════════════════════════════════════════════════════════════
-elif "Pricing" in page:
-    st.title("💎 Upgrade to Premium")
-    st.divider()
-    c1,c2=st.columns(2)
-    with c1:
-        st.markdown("""<div class='tier-box'><h3>🆓 Free</h3><h2>$0/mo</h2><hr>
-        ✅ Account login<br><br>✅ 5 assets<br><br>✅ Basic signals<br><br>
-        ❌ Grade A/B/C/D system<br><br>❌ 8-strategy engine<br><br>
-        ❌ Price charts + indicators<br><br>❌ Multi-timeframe analysis<br><br>
-        ❌ Currency strength meter<br><br>❌ Precision entry tools<br><br>
-        ❌ Prop firm tools<br><br>❌ News + AI analysis<br><br>
-        ❌ AI Strategy Builder<br><br>❌ AI Chart Analysis<br><br>
-        ❌ Telegram alerts<br><br>❌ Trade Journal + Performance
-        </div>""",unsafe_allow_html=True)
-    with c2:
-        st.markdown("""<div class='tier-box gold'><h3>⚡ Premium</h3><h2>$24/mo</h2><hr>
-        ✅ All 10 assets<br><br>✅ 🏆 Grade A/B/C/D signal quality<br><br>
-        ✅ 8-strategy engine<br><br>✅ 📈 Price charts (Candles+RSI+MACD)<br><br>
-        ✅ 📐 Multi-timeframe analysis (1H to Monthly)<br><br>
-        ✅ 💹 Currency strength meter<br><br>✅ 🎯 Precision entry tools<br><br>
-        ✅ 🏢 Prop firm tools (FTMO, The5ers etc)<br><br>
-        ✅ 🗞️ News + AI news analysis<br><br>✅ 🤖 AI Strategy Builder<br><br>
-        ✅ 📸 AI Chart Analysis (upload any chart)<br><br>
-        ✅ 🔔 Telegram alerts<br><br>
-        ✅ 📓 Trade Journal + 📈 Performance Dashboard
-        </div>""",unsafe_allow_html=True)
-    st.divider()
+elif "Upgrade" in page:
+    st.markdown("### 💎 Upgrade to Premium")
     st.markdown("""
-    **💳 How to upgrade:**
-    1. Pay \$24/mo on **[Whop](https://whop.com)** or **[Gumroad](https://gumroad.com)**
-    2. Email your receipt to the admin
-    3. Admin upgrades your account → login again → Premium unlocked ✅
-
-    **Recommended: [Whop.com](https://whop.com)** — built for trading tools like this
+    <div style='background:linear-gradient(135deg,#1a1a0a,#2d2a0a);border:2px solid #ffd200;
+      border-radius:16px;padding:24px;text-align:center;margin:16px 0'>
+      <div style='font-size:32px'>⚡</div>
+      <h2 style='color:#ffd200;margin:8px 0'>Premium Plan</h2>
+      <h1 style='color:#fff;margin:0'>$24/month</h1>
+      <p style='color:#8b949e;margin:12px 0'>Everything you need to trade professionally</p>
+      <hr style='border-color:#30363d;margin:16px 0'>
+      <p>✅ All 10 assets · Grade A/B/C/D signals<br>
+      ✅ Live Pulse with 8-strategy engine<br>
+      ✅ Multi-timeframe · Currency strength<br>
+      ✅ Precision entries · Prop firm tools<br>
+      ✅ AI Strategy Builder · Chart analysis<br>
+      ✅ Telegram alerts · Trade journal</p>
+    </div>
+    """,unsafe_allow_html=True)
+    st.markdown("""
+    **To upgrade:**
+    1. Pay on **[Whop.com](https://whop.com)** or **[Gumroad](https://gumroad.com)**
+    2. Email receipt to admin
+    3. Admin upgrades your account
+    4. Logout → Login → Premium unlocked ✅
     """)
+
+st.markdown("</div>",unsafe_allow_html=True)
