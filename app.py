@@ -48,11 +48,12 @@ def get_user(email):
 
 def create_user(email,password,tier="free"):
     try:
-        r=requests.post(supabase_url("users"),headers=get_supabase_headers(),
-            json={"email":email,"password_hash":hash_password(password),"tier":tier,
-                  "is_active":True,"created_at":datetime.datetime.now().isoformat()},timeout=8)
-        return r.status_code in [200,201]
-    except: return False
+        headers=get_supabase_headers()
+        headers["Prefer"]="return=representation"
+        payload={"email":email,"password_hash":hash_password(password),"tier":tier,"is_active":True,"created_at":datetime.datetime.now().isoformat()}
+        r=requests.post(supabase_url("users"),headers=headers,json=payload,timeout=8)
+        return r.status_code in [200,201], r.text
+    except Exception as e: return False, str(e)
 
 def update_user_tier(email,tier):
     try:
@@ -114,8 +115,10 @@ def show_login():
             elif rp!=rp2: st.error("❌ Passwords don't match.")
             elif len(rp)<6: st.error("❌ Min 6 characters.")
             elif get_user(re): st.error("❌ Email already exists.")
-            elif create_user(re,rp,"free"): st.success("✅ Account created! Please login.")
-            else: st.error("❌ Registration failed.")
+            else:
+                ok,err=create_user(re,rp,"free")
+                if ok: st.success("✅ Account created! Please login.")
+                else: st.error(f"❌ Failed: {err}")
 
 if not st.session_state.logged_in:
     show_login(); st.stop()
@@ -633,8 +636,10 @@ if "Admin" in page:
     st.subheader("➕ Create User")
     c1,c2,c3=st.columns(3)
     ne=c1.text_input("Email",key="ne"); np_=c2.text_input("Password",type="password",key="np"); nt=c3.selectbox("Tier",["free","premium"])
-    if st.button("Create"):
-        st.success(f"✅ Created!") if create_user(ne,np_,nt) else st.error("❌ Failed.")
+    if st.button("Create User"):
+        ok,err=create_user(ne,np_,nt)
+        if ok: st.success("✅ Created!")
+        else: st.error(f"❌ Failed: {err}")
     st.divider()
     st.subheader("🗑️ Delete User")
     de=st.text_input("Email to delete")
