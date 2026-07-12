@@ -648,7 +648,7 @@ tabs_free=["⚡ Pulse","👁 Watchlist","📊 Scanner","💰 Risk Calc","💎 Up
 tabs_premium=["⚡ Pulse","👁 Watchlist","📊 Scanner","🏆 Trade of Day",
               "📐 Multi-TF","💹 Strength","🎯 Precision","🏢 Prop Firm",
               "🗞️ News","🤖 AI Strategy","📸 Chart AI","🔔 Alerts",
-              "📓 Journal","📈 Performance","💰 Risk Calc","⚙️ Settings"]
+              "📓 Journal","📈 Performance","💰 Risk Calc","📡 MT5 Bot","⚙️ Settings"]
 tabs_admin=["👑 Admin"]+tabs_premium
 tabs=tabs_admin if is_admin else (tabs_premium if premium else tabs_free)
 
@@ -1252,5 +1252,444 @@ elif "Upgrade" in page:
     3. Admin upgrades your account
     4. Logout → Login → Premium unlocked ✅
     """)
+# ════════════════════════════════════════════════════════════
+# PAGE: MT5 BOT CONTROL PANEL
+# ════════════════════════════════════════════════════════════
+elif "MT5 Bot" in page:
+    import json, os, base64
+
+    st.markdown("### 📡 MT5 Auto-Trading Bot")
+    if not premium: st.error("🔒 Premium only."); st.stop()
+
+    # ── Session state for bot ────────────────────────────────
+    if "bot_active"          not in st.session_state: st.session_state.bot_active=False
+    if "bot_grade_filter"    not in st.session_state: st.session_state.bot_grade_filter=["A","B"]
+    if "bot_lot_size"        not in st.session_state: st.session_state.bot_lot_size=0.01
+    if "bot_conf_threshold"  not in st.session_state: st.session_state.bot_conf_threshold=75
+    if "bot_daily_profit"    not in st.session_state: st.session_state.bot_daily_profit=10.0
+    if "bot_daily_loss"      not in st.session_state: st.session_state.bot_daily_loss=15.0
+    if "bot_tp_points"       not in st.session_state: st.session_state.bot_tp_points=2000
+    if "bot_sl_points"       not in st.session_state: st.session_state.bot_sl_points=2500
+    if "bot_log"             not in st.session_state: st.session_state.bot_log=[]
+    if "bot_signals_sent"    not in st.session_state: st.session_state.bot_signals_sent=[]
+    if "bot_signal_data"     not in st.session_state: st.session_state.bot_signal_data=None
+
+    # ── Status banner ─────────────────────────────────────────
+    bot_color  = "#0a1a0a" if st.session_state.bot_active else "#1a0a0a"
+    bot_border = "#3fb950" if st.session_state.bot_active else "#f85149"
+    bot_status = "🟢 ACTIVE — Scanning & sending signals to MT5" if st.session_state.bot_active else "🔴 INACTIVE — Bot is off"
+    st.markdown(f"""
+    <div style='background:{bot_color};border:2px solid {bot_border};border-radius:14px;
+      padding:16px;text-align:center;margin-bottom:16px'>
+      <div style='font-size:18px;font-weight:800;color:{"#3fb950" if st.session_state.bot_active else "#f85149"}'>{bot_status}</div>
+      <div style='font-size:12px;color:#8b949e;margin-top:4px'>
+        {'Monitoring markets every refresh · Sending Grade '+'/'.join(st.session_state.bot_grade_filter)+' signals automatically' if st.session_state.bot_active else 'Activate below to start auto-trading on MT5'}
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Activate / Deactivate ─────────────────────────────────
+    col1, col2 = st.columns(2)
+    if col1.button("▶️ ACTIVATE BOT" if not st.session_state.bot_active else "⏹️ DEACTIVATE BOT",
+                   type="primary" if not st.session_state.bot_active else "secondary",
+                   use_container_width=True):
+        st.session_state.bot_active = not st.session_state.bot_active
+        action = "ACTIVATED" if st.session_state.bot_active else "DEACTIVATED"
+        st.session_state.bot_log.insert(0, f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Bot {action} by {st.session_state.user_email}")
+        st.rerun()
+
+    if col2.button("🔄 Run Scan Now", use_container_width=True, disabled=not st.session_state.bot_active):
+        with st.spinner("Scanning markets for bot signals..."):
+            bot_found = []
+            for name, sym in ALL_PAIRS.items():
+                sig = analyse_pair(sym, name)
+                if (sig and sig["direction"] != "WAIT"
+                        and sig["grade"] in st.session_state.bot_grade_filter
+                        and sig["confidence"] >= st.session_state.bot_conf_threshold):
+                    bot_found.append(sig)
+
+            if bot_found:
+                best = max(bot_found, key=lambda x: x["confidence"])
+                st.session_state.bot_signal_data = best
+                log_entry = f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Signal: {best['direction']} {best['pair']} Grade {best['grade']} {best['confidence']}% — file written"
+                st.session_state.bot_log.insert(0, log_entry)
+                st.session_state.bot_signals_sent.append({
+                    "time": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+                    "pair": best["pair"],
+                    "direction": best["direction"],
+                    "grade": best["grade"],
+                    "confidence": best["confidence"],
+                    "entry": best["entry"],
+                    "sl": best["sl"],
+                    "tp1": best["tp1"],
+                })
+                st.success(f"✅ Signal found: {best['direction']} {best['pair']} Grade {best['grade']} {best['confidence']}%")
+            else:
+                st.session_state.bot_log.insert(0, f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Scan complete — no qualifying signals")
+                st.info("⏳ No qualifying signals this scan.")
+        st.rerun()
+
+    st.divider()
+
+    # ── Bot Settings ──────────────────────────────────────────
+    st.subheader("⚙️ Bot Settings")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**Signal Filters**")
+        grade_opts = st.multiselect("Minimum Grade",["A","B","C"],
+            default=st.session_state.bot_grade_filter)
+        st.session_state.bot_grade_filter = grade_opts
+        conf_thresh = st.slider("Min Confidence %", 60, 95,
+            st.session_state.bot_conf_threshold)
+        st.session_state.bot_conf_threshold = conf_thresh
+
+    with col2:
+        st.markdown("**Trade Sizing**")
+        lot = st.number_input("Lot Size", min_value=0.01, max_value=10.0,
+            value=st.session_state.bot_lot_size, step=0.01, format="%.2f")
+        st.session_state.bot_lot_size = lot
+        tp_pts = st.number_input("Take Profit (points)", min_value=100,
+            value=st.session_state.bot_tp_points, step=100)
+        st.session_state.bot_tp_points = tp_pts
+        sl_pts = st.number_input("Max Stop Loss (points)", min_value=100,
+            value=st.session_state.bot_sl_points, step=100)
+        st.session_state.bot_sl_points = sl_pts
+
+    with col3:
+        st.markdown("**Daily Risk Limits**")
+        dp = st.number_input("Daily Profit Target ($)", min_value=1.0,
+            value=st.session_state.bot_daily_profit, step=1.0)
+        st.session_state.bot_daily_profit = dp
+        dl = st.number_input("Daily Loss Limit ($)", min_value=1.0,
+            value=st.session_state.bot_daily_loss, step=1.0)
+        st.session_state.bot_daily_loss = dl
+
+    st.divider()
+
+    # ── Signal File + Download ────────────────────────────────
+    st.subheader("📄 Current Signal File")
+    st.markdown("""
+    The app writes a **`sparro_signal.json`** file that the MT5 EA reads every 10 seconds.
+    When a qualifying signal is found, it updates this file and MT5 places the trade automatically.
+    """)
+
+    if st.session_state.bot_signal_data:
+        sig = st.session_state.bot_signal_data
+        dp = 5 if sig["entry"] < 100 else 2
+        signal_json = {
+            "active":      st.session_state.bot_active,
+            "symbol":      sig["symbol"].replace("=X","").replace("^","").replace("-",""),
+            "action":      sig["direction"],
+            "grade":       sig["grade"],
+            "confidence":  sig["confidence"],
+            "entry":       round(sig["entry"], dp),
+            "sl":          round(sig["sl"],    dp),
+            "tp1":         round(sig["tp1"],   dp),
+            "tp2":         round(sig["tp2"],   dp),
+            "lot_size":    st.session_state.bot_lot_size,
+            "tp_points":   st.session_state.bot_tp_points,
+            "sl_points":   st.session_state.bot_sl_points,
+            "daily_profit_target": st.session_state.bot_daily_profit,
+            "daily_loss_limit":    st.session_state.bot_daily_loss,
+            "timestamp":   datetime.datetime.utcnow().isoformat(),
+            "source":      "SparroFXAI",
+        }
+        st.code(json.dumps(signal_json, indent=2), language="json")
+
+        # Download the signal file
+        json_bytes = json.dumps(signal_json, indent=2).encode()
+        st.download_button(
+            "⬇️ Download sparro_signal.json",
+            data=json_bytes,
+            file_name="sparro_signal.json",
+            mime="application/json",
+        )
+        st.caption("Place this file in your MT5 signals folder — the EA will pick it up automatically.")
+    else:
+        st.info("No signal generated yet. Activate the bot and tap 'Run Scan Now'.")
+
+    st.divider()
+
+    # ── MT5 EA Setup Guide ────────────────────────────────────
+    st.subheader("🛠️ MT5 EA Setup Guide")
+    with st.expander("📖 How to connect MT5 in 4 steps"):
+        st.markdown("""
+        **Step 1 — Download the EA below**
+        Save `SparroFX_EA.mq5` to your computer.
+
+        **Step 2 — Install in MT5**
+        1. Open MT5 → **File → Open Data Folder**
+        2. Go to `MQL5 → Experts`
+        3. Copy `SparroFX_EA.mq5` there
+        4. Restart MT5 → go to **Navigator → Expert Advisors**
+        5. Drag the EA onto your XAUUSD M15 chart
+
+        **Step 3 — Configure the EA**
+        - Set `SignalFolder` = the folder where signal file is saved
+        - Enable **AutoTrading** (green button in MT5 toolbar)
+        - Allow **DLL imports** in MT5 settings
+
+        **Step 4 — Activate in this app**
+        - Turn on the bot above
+        - Tap **Run Scan Now**
+        - EA reads the file within 10 seconds and places the trade ✅
+        """)
+
+    # ── EA Code Download ──────────────────────────────────────
+    EA_CODE = '''//+------------------------------------------------------------------+
+//|  SparroFX_EA.mq5 — Reads signals from Sparro FX AI app           |
+//|  Compatible with the Streamlit bot control panel                  |
+//+------------------------------------------------------------------+
+#property copyright "Sparro FX AI"
+#property version   "2.00"
+#property strict
+
+#include <Trade\\Trade.mqh>
+CTrade trade;
+
+//--- Inputs
+input string   SignalFolder       = "C:\\\\Users\\\\YourName\\\\SparroFX_Signals\\\\";
+input string   SignalFile         = "sparro_signal.json";
+input bool     EnableTrading      = true;
+input bool     OnlyGradeAB        = true;   // Only trade Grade A and B signals
+input double   LotSizeOverride    = 0.0;    // 0 = use lot from signal file
+input int      CheckIntervalSec   = 10;     // How often to check signal file
+input int      MagicNumber        = 990033;
+input int      Slippage           = 10;
+
+//--- Globals
+string   lastTimestamp    = "";
+bool     dailyLimitHit    = false;
+double   dayStartBalance  = 0;
+datetime currentDay       = 0;
+
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   EventSetTimer(CheckIntervalSec);
+   trade.SetExpertMagicNumber(MagicNumber);
+   trade.SetDeviationInPoints(Slippage);
+   ResetDailyTracking();
+   Print("SparroFX EA v2.0 started. Monitoring: ", SignalFolder + SignalFile);
+   return(INIT_SUCCEEDED);
+  }
+
+void OnDeinit(const int reason) { EventKillTimer(); }
+void OnTick() {}
+
+//+------------------------------------------------------------------+
+void ResetDailyTracking()
+  {
+   MqlDateTime tm;
+   TimeToStruct(TimeCurrent(), tm);
+   tm.hour=0; tm.min=0; tm.sec=0;
+   currentDay      = StructToTime(tm);
+   dayStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   dailyLimitHit   = false;
+   Print("New trading day. Balance: ", dayStartBalance);
+  }
+
+void CheckNewDay()
+  {
+   MqlDateTime tm;
+   TimeToStruct(TimeCurrent(), tm);
+   tm.hour=0; tm.min=0; tm.sec=0;
+   if(StructToTime(tm) != currentDay) ResetDailyTracking();
+  }
+
+double GetDailyPnL()
+  {
+   return AccountInfoDouble(ACCOUNT_EQUITY) - dayStartBalance;
+  }
+
+int CountMyPositions()
+  {
+   int n=0;
+   for(int i=0;i<PositionsTotal();i++)
+     {
+      if(PositionGetTicket(i) && PositionGetInteger(POSITION_MAGIC)==MagicNumber
+         && PositionGetString(POSITION_SYMBOL)==_Symbol) n++;
+     }
+   return n;
+  }
+
+//+------------------------------------------------------------------+
+//| Parse a string field from JSON (simple, no external libs needed)  |
+//+------------------------------------------------------------------+
+string ParseStr(string json, string key)
+  {
+   string search = "\\"" + key + "\\"";
+   int pos = StringFind(json, search);
+   if(pos<0) return "";
+   pos = StringFind(json,":",pos)+1;
+   while(pos<StringLen(json) && (StringGetCharacter(json,pos)==' '||StringGetCharacter(json,pos)=='"')) pos++;
+   string result="";
+   while(pos<StringLen(json))
+     {
+      ushort c=StringGetCharacter(json,pos);
+      if(c=='"'||c==','||c=='}'||c=='\n') break;
+      result+=ShortToString(c); pos++;
+     }
+   return result;
+  }
+
+double ParseDbl(string json, string key)
+  {
+   return StringToDouble(ParseStr(json,key));
+  }
+
+//+------------------------------------------------------------------+
+void OnTimer()
+  {
+   CheckNewDay();
+   if(!EnableTrading) return;
+
+   // Read signal file
+   string fullPath = SignalFolder + SignalFile;
+   int fh = FileOpen(fullPath, FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
+   if(fh==INVALID_HANDLE) return;
+
+   string content="";
+   while(!FileIsEnding(fh)) content += FileReadString(fh);
+   FileClose(fh);
+
+   if(StringLen(content)<10) return;
+
+   // Check bot is active
+   string activeStr = ParseStr(content,"active");
+   if(activeStr != "true") return;
+
+   // Avoid re-trading same signal
+   string ts = ParseStr(content,"timestamp");
+   if(ts==lastTimestamp) return;
+
+   // Parse signal fields
+   string symbol    = ParseStr(content,"symbol");
+   string action    = ParseStr(content,"action");
+   string grade     = ParseStr(content,"grade");
+   double confidence= ParseDbl(content,"confidence");
+   double entry     = ParseDbl(content,"entry");
+   double sl_price  = ParseDbl(content,"sl");
+   double tp1_price = ParseDbl(content,"tp1");
+   double lot       = ParseDbl(content,"lot_size");
+   double dpTarget  = ParseDbl(content,"daily_profit_target");
+   double dlLimit   = ParseDbl(content,"daily_loss_limit");
+
+   if(LotSizeOverride>0) lot = LotSizeOverride;
+   if(lot<=0) lot = 0.01;
+
+   // Grade filter
+   if(OnlyGradeAB && grade!="A" && grade!="B")
+     {
+      Print("Signal grade ",grade," filtered out (OnlyGradeAB=true)");
+      lastTimestamp=ts; return;
+     }
+
+   // Daily limit checks
+   double dailyPnL = GetDailyPnL();
+   if(!dailyLimitHit && dailyPnL >= dpTarget)
+     {
+      dailyLimitHit=true;
+      Print("Daily profit target reached (",dailyPnL,"). No new trades.");
+     }
+   if(!dailyLimitHit && dailyPnL <= -MathAbs(dlLimit))
+     {
+      dailyLimitHit=true;
+      Print("Daily loss limit reached (",dailyPnL,"). No new trades.");
+     }
+   if(dailyLimitHit) { lastTimestamp=ts; return; }
+
+   // One trade at a time
+   if(CountMyPositions()>0) { lastTimestamp=ts; return; }
+
+   // Only trade on matching chart symbol
+   string chartSym = _Symbol;
+   StringReplace(chartSym,".",""); StringReplace(chartSym,"_","");
+   if(symbol!="" && symbol!=chartSym)
+     {
+      Print("Signal for ",symbol," — this chart is ",chartSym," — skipping.");
+      lastTimestamp=ts; return;
+     }
+
+   // Place the trade
+   double ask = SymbolInfoDouble(_Symbol,SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol,SYMBOL_BID);
+
+   PrintFormat("SparroFX Signal: %s %s Grade=%s Conf=%.0f%% Lot=%.2f Entry=%.5f SL=%.5f TP1=%.5f",
+               action,symbol,grade,confidence,lot,entry,sl_price,tp1_price);
+
+   if(action=="BUY")
+     {
+      if(sl_price<=0)  sl_price  = ask - 2500*_Point;
+      if(tp1_price<=0) tp1_price = ask + 2000*_Point;
+      if(trade.Buy(lot,_Symbol,ask,sl_price,tp1_price,"SparroFX AI Buy"))
+         Print("BUY opened. Ticket: ",trade.ResultOrder());
+      else
+         Print("BUY failed: ",trade.ResultRetcodeDescription());
+     }
+   else if(action=="SELL")
+     {
+      if(sl_price<=0)  sl_price  = bid + 2500*_Point;
+      if(tp1_price<=0) tp1_price = bid - 2000*_Point;
+      if(trade.Sell(lot,_Symbol,bid,sl_price,tp1_price,"SparroFX AI Sell"))
+         Print("SELL opened. Ticket: ",trade.ResultOrder());
+      else
+         Print("SELL failed: ",trade.ResultRetcodeDescription());
+     }
+
+   lastTimestamp = ts;
+  }
+//+------------------------------------------------------------------+
+'''
+
+    # Download EA file
+    ea_bytes = EA_CODE.encode()
+    st.download_button(
+        "⬇️ Download SparroFX_EA.mq5",
+        data=ea_bytes,
+        file_name="SparroFX_EA.mq5",
+        mime="text/plain",
+        type="primary",
+    )
+
+    st.divider()
+
+    # ── Signals Sent Log ──────────────────────────────────────
+    st.subheader("📋 Signals Sent to MT5")
+    if st.session_state.bot_signals_sent:
+        df_log = pd.DataFrame(st.session_state.bot_signals_sent[:20])
+        st.dataframe(df_log, use_container_width=True)
+        if st.button("🗑️ Clear Log"):
+            st.session_state.bot_signals_sent = []
+            st.rerun()
+    else:
+        st.info("No signals sent yet.")
+
+    st.divider()
+
+    # ── Activity Log ──────────────────────────────────────────
+    st.subheader("🪵 Bot Activity Log")
+    if st.session_state.bot_log:
+        for entry in st.session_state.bot_log[:15]:
+            color = "#3fb950" if "ACTIVATED" in entry or "Signal:" in entry else \
+                    "#f85149" if "DEACTIVATED" in entry or "limit" in entry.lower() else "#8b949e"
+            st.markdown(f"<p style='font-size:12px;color:{color};font-family:monospace;margin:2px 0'>{entry}</p>",
+                        unsafe_allow_html=True)
+    else:
+        st.info("No activity yet.")
+
+    # ── Risk Warning ──────────────────────────────────────────
+    st.divider()
+    st.markdown("""
+    <div style='background:#1a0a0a;border:1px solid #f8514930;border-radius:10px;padding:14px'>
+    <b style='color:#f85149'>⚠️ Auto-Trading Risk Warning</b><br>
+    <small style='color:#8b949e'>
+    Automated trading carries significant risk. Past signal performance does not guarantee future results.
+    Always test on a demo account first. Never auto-trade with money you cannot afford to lose.
+    Set conservative lot sizes and daily loss limits. Monitor the bot regularly.
+    Sparro FX AI is not responsible for any trading losses incurred through use of this feature.
+    </small>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("</div>",unsafe_allow_html=True)
