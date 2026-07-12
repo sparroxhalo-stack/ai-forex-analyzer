@@ -263,7 +263,9 @@ def get_atr(df,period=14):
 
 def time_ago(dt):
     """Returns human-readable time since signal was generated"""
-    diff=datetime.datetime.utcnow()-dt
+    now_utc=datetime.datetime.now(datetime.timezone.utc)
+    if dt.tzinfo is None: dt=dt.replace(tzinfo=datetime.timezone.utc)
+    diff=now_utc-dt
     secs=int(diff.total_seconds())
     if secs<60: return "just now"
     if secs<3600: return f"{secs//60}m ago"
@@ -283,7 +285,7 @@ def analyse_pair(symbol,pair_name):
     8. Volume confirmation
     9. ADX Trend Strength filter
     """
-    scan_time=datetime.datetime.utcnow()
+    scan_time=datetime.datetime.now(datetime.timezone.utc)
 
     df_d=fetch(symbol,"6mo","1d")
     df_4h=fetch(symbol,"3mo","1h")
@@ -467,7 +469,7 @@ def analyse_pair(symbol,pair_name):
     weekly_ok=weekly_bull==(direction=="BUY") or direction=="WAIT"
 
     # 4. Session filter
-    hour=datetime.datetime.utcnow().hour
+    hour=datetime.datetime.now(datetime.timezone.utc).hour
     session_ok=(7<=hour<=17) or (12<=hour<=21)
     session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
 
@@ -628,7 +630,7 @@ def render_signal_card(sig):
 # ════════════════════════════════════════════════════════════
 # HEADER
 # ════════════════════════════════════════════════════════════
-now=datetime.datetime.utcnow().strftime("%H:%M UTC")
+now=datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M UTC")
 tier_label="👑 Admin" if is_admin else ("⚡ Pro" if premium else "🆓 Free")
 
 st.markdown(f"""
@@ -661,8 +663,8 @@ for t in tabs:
 tab_html+="</div>"
 
 # Use selectbox for navigation (styled like tabs)
-selected_tab=st.selectbox("",tabs,index=tabs.index(active) if active in tabs else 0,
-    label_visibility="collapsed",key="tab_select")
+selected_tab=st.selectbox("Select Page",tabs,index=tabs.index(active) if active in tabs else 0,
+    label_visibility="hidden",key="tab_select")
 st.session_state.active_tab=selected_tab
 page=selected_tab
 
@@ -1294,7 +1296,7 @@ elif "MT5 Bot" in page:
                    use_container_width=True):
         st.session_state.bot_active = not st.session_state.bot_active
         action = "ACTIVATED" if st.session_state.bot_active else "DEACTIVATED"
-        st.session_state.bot_log.insert(0, f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Bot {action} by {st.session_state.user_email}")
+        st.session_state.bot_log.insert(0, f"[{datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')}] Bot {action} by {st.session_state.user_email}")
         st.rerun()
 
     if col2.button("🔄 Run Scan Now", use_container_width=True, disabled=not st.session_state.bot_active):
@@ -1310,10 +1312,10 @@ elif "MT5 Bot" in page:
             if bot_found:
                 best = max(bot_found, key=lambda x: x["confidence"])
                 st.session_state.bot_signal_data = best
-                log_entry = f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Signal: {best['direction']} {best['pair']} Grade {best['grade']} {best['confidence']}% — file written"
+                log_entry = f"[{datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')}] Signal: {best['direction']} {best['pair']} Grade {best['grade']} {best['confidence']}% — file written"
                 st.session_state.bot_log.insert(0, log_entry)
                 st.session_state.bot_signals_sent.append({
-                    "time": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+                    "time": datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S"),
                     "pair": best["pair"],
                     "direction": best["direction"],
                     "grade": best["grade"],
@@ -1324,7 +1326,7 @@ elif "MT5 Bot" in page:
                 })
                 st.success(f"✅ Signal found: {best['direction']} {best['pair']} Grade {best['grade']} {best['confidence']}%")
             else:
-                st.session_state.bot_log.insert(0, f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Scan complete — no qualifying signals")
+                st.session_state.bot_log.insert(0, f"[{datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')}] Scan complete — no qualifying signals")
                 st.info("⏳ No qualifying signals this scan.")
         st.rerun()
 
@@ -1391,7 +1393,7 @@ elif "MT5 Bot" in page:
             "sl_points":   st.session_state.bot_sl_points,
             "daily_profit_target": st.session_state.bot_daily_profit,
             "daily_loss_limit":    st.session_state.bot_daily_loss,
-            "timestamp":   datetime.datetime.utcnow().isoformat(),
+            "timestamp":   datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "source":      "SparroFXAI",
         }
         st.code(json.dumps(signal_json, indent=2), language="json")
