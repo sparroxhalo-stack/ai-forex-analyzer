@@ -244,13 +244,20 @@ pairs=ALL_PAIRS if premium else FREE_PAIRS
 # ════════════════════════════════════════════════════════════
 # DATA & STRATEGIES
 # ════════════════════════════════════════════════════════════
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch(symbol,period="6mo",interval="1d"):
     try:
-        df=yf.download(symbol,period=period,interval=interval,progress=False,auto_adjust=True)
-        if df.empty: return None
+        import signal
+        df=yf.download(symbol,period=period,interval=interval,
+                       progress=False,auto_adjust=True,
+                       threads=False,timeout=15)
+        if df is None or df.empty: return None
         if isinstance(df.columns,pd.MultiIndex): df.columns=df.columns.get_level_values(0)
+        # Ensure we have required columns
+        required=["Close","High","Low"]
+        if not all(c in df.columns for c in required): return None
         return df
-    except: return None
+    except Exception: return None
 
 def get_rsi(close,period=14):
     d=close.diff(); g=d.where(d>0,0).rolling(period).mean(); l=(-d.where(d<0,0)).rolling(period).mean()
@@ -272,6 +279,7 @@ def time_ago(dt):
     if secs<86400: return f"{secs//3600}h ago"
     return f"{secs//86400}d ago"
 
+@st.cache_data(ttl=900, show_spinner=False)
 def analyse_pair(symbol,pair_name):
     """
     Full professional analysis with 9 strategies:
@@ -733,19 +741,29 @@ elif "Pulse" in page:
     if not premium:
         st.warning("🔒 Free plan shows 5 assets. Upgrade for all 10 + Grade A/B system.")
 
-    if st.button("🔄 Refresh Signals",use_container_width=True):
-        st.rerun()
-
     compact=st.toggle("Compact view",value=False)
-    signals=[]
-    prog=st.progress(0); items=list(pairs.items())
-    status=st.empty()
-    for i,(name,sym) in enumerate(items):
-        status.caption(f"Analysing {name}...")
-        sig=analyse_pair(sym,name)
-        if sig and sig["direction"]!="WAIT": signals.append(sig)
-        prog.progress((i+1)/len(items))
-    prog.empty(); status.empty()
+
+    # Only scan when button is pressed — prevents segfault on startup
+    if "pulse_signals" not in st.session_state:
+        st.session_state.pulse_signals=[]
+
+    col_r1,col_r2=st.columns(2)
+    if col_r1.button("🔄 Refresh Signals",use_container_width=True,type="primary"):
+        signals_temp=[]
+        prog=st.progress(0); items=list(pairs.items()); status=st.empty()
+        for i,(name,sym) in enumerate(items):
+            status.caption(f"Analysing {name}...")
+            try:
+                sig=analyse_pair(sym,name)
+                if sig and sig["direction"]!="WAIT": signals_temp.append(sig)
+            except Exception: pass
+            prog.progress((i+1)/len(items))
+        prog.empty(); status.empty()
+        st.session_state.pulse_signals=signals_temp
+        st.rerun()
+    col_r2.caption("Tap Refresh to scan markets")
+
+    signals=st.session_state.pulse_signals
 
     # Sort by confidence
     signals.sort(key=lambda x:x["confidence"],reverse=True)
