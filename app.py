@@ -383,105 +383,38 @@ def analyse_pair(symbol,pair_name):
     elif price<lookback_l:          bos_sig="SELL"
     else:                           bos_sig="WAIT"
 
-    # ── STRATEGY 7: CANDLESTICK PATTERNS ──────────────────
-    o=float(df_d["Open"].iloc[-1]) if "Open" in df_d.columns else float(c.iloc[-2])
-    hi=float(h_.iloc[-1]); lo=float(l_.iloc[-1]); cl=float(c.iloc[-1])
-    po=float(df_d["Open"].iloc[-2]) if "Open" in df_d.columns else float(c.iloc[-3])
-    pc=float(c.iloc[-2])
-    body=abs(cl-o); full=hi-lo
-    uw=hi-max(cl,o); lw=min(cl,o)-lo
-    # Engulfing (strongest reversal)
-    bull_engulf=cl>o and pc<po and cl>po and o<pc and body>abs(pc-po)*1.2
-    bear_engulf=cl<o and pc>po and cl<po and o>pc and body>abs(pc-po)*1.2
-    # Pin bars (rejection)
-    bull_pin=lw>body*2.5 and uw<body*0.4 and full>atr*0.3
-    bear_pin=uw>body*2.5 and lw<body*0.4 and full>atr*0.3
-    # Inside bar breakout
-    inside_bar=hi<float(h_.iloc[-2]) and lo>float(l_.iloc[-2])
-    if bull_engulf:            candle_sig="BUY";  candle_name="Bullish Engulfing"
-    elif bear_engulf:          candle_sig="SELL"; candle_name="Bearish Engulfing"
-    elif bull_pin:             candle_sig="BUY";  candle_name="Hammer/Pin Bar"
-    elif bear_pin:             candle_sig="SELL"; candle_name="Shooting Star"
-    elif inside_bar and cl>o:  candle_sig="BUY";  candle_name="Inside Bar Bull"
-    elif inside_bar and cl<o:  candle_sig="SELL"; candle_name="Inside Bar Bear"
-    elif cl>o:                 candle_sig="BUY";  candle_name="Bullish close"
-    else:                      candle_sig="SELL"; candle_name="Bearish close"
-
-    # ── STRATEGY 8: VOLUME CONFIRMATION ───────────────────
-    if "Volume" in df_d.columns:
-        v=df_d["Volume"]
-        avg_vol=float(v.rolling(20).mean().iloc[-1])
-        cur_vol=float(v.iloc[-1])
-        vol_ratio=cur_vol/avg_vol if avg_vol>0 else 1.0
-        # Volume confirms direction
-        price_up=cl>pc
-        if vol_ratio>=1.3 and price_up:     vol_sig="BUY"
-        elif vol_ratio>=1.3 and not price_up: vol_sig="SELL"
-        elif vol_ratio>=0.8 and price_up:   vol_sig="BUY"
-        elif vol_ratio>=0.8:                vol_sig="SELL"
-        else:                               vol_sig="WAIT"
-        vol_ok=vol_ratio>0.7
-    else:
-        vol_sig="WAIT"; vol_ok=True; vol_ratio=1.0
-
-    # ── STRATEGY 9: ADX TREND STRENGTH ────────────────────
-    # ADX measures trend strength (>25 = trending, >40 = strong)
-    try:
-        tr_=pd.concat([h_-l_,(h_-c.shift()).abs(),(l_-c.shift()).abs()],axis=1).max(axis=1)
-        dm_plus=h_.diff(); dm_minus=-l_.diff()
-        dm_plus=dm_plus.where((dm_plus>dm_minus)&(dm_plus>0),0)
-        dm_minus=dm_minus.where((dm_minus>dm_plus)&(dm_minus>0),0)
-        atr14=tr_.rolling(14).mean()
-        di_plus=100*(dm_plus.rolling(14).mean()/atr14)
-        di_minus=100*(dm_minus.rolling(14).mean()/atr14)
-        dx=100*((di_plus-di_minus).abs()/(di_plus+di_minus))
-        adx=float(dx.rolling(14).mean().iloc[-1])
-        di_p=float(di_plus.iloc[-1]); di_m=float(di_minus.iloc[-1])
-        if adx>=25 and di_p>di_m:   adx_sig="BUY"
-        elif adx>=25 and di_m>di_p: adx_sig="SELL"
-        else:                        adx_sig="WAIT"
-        trend_strong=adx>=25
-    except:
-        adx_sig="WAIT"; adx=0; trend_strong=False
-
-    # ── COMBINE ALL 9 STRATEGIES ──────────────────────────
-    all_sigs=[ema_sig,rsi_sig,macd_sig,bb_sig,sr_sig,bos_sig,candle_sig,vol_sig,adx_sig]
+    # ── COMBINE ORIGINAL 6 STRATEGIES ────────────────────
+    all_sigs=[ema_sig,rsi_sig,macd_sig,bb_sig,sr_sig,bos_sig]
     buys=sum(1 for s in all_sigs if s=="BUY")
     sells=sum(1 for s in all_sigs if s=="SELL")
     total=len(all_sigs)
 
     if buys>sells:
         direction="BUY"; conf=round(buys/total*100)
-        final_sig="STRONG BUY" if buys>=7 else "BUY"
+        final_sig="STRONG BUY" if buys>=5 else "BUY"
     elif sells>buys:
         direction="SELL"; conf=round(sells/total*100)
-        final_sig="STRONG SELL" if sells>=7 else "SELL"
+        final_sig="STRONG SELL" if sells>=5 else "SELL"
     else:
         direction="WAIT"; conf=50; final_sig="WAIT"
 
     # ── QUALITY FILTERS ───────────────────────────────────
-    # Only show signals that pass ALL key quality filters:
-    # 1. ATR filter: volatility must be meaningful (not too low)
     atr_pct=atr/price*100
-    atr_ok=atr_pct>=0.2  # min 0.2% daily range
+    atr_ok=atr_pct>=0.2
 
-    # 2. Candle body filter: candle must have meaningful body
-    candle_body_pct=body/full if full>0 else 0
-    candle_quality_ok=candle_body_pct>=0.1 or bull_engulf or bear_engulf or bull_pin or bear_pin
-
-    # 3. Weekly trend filter
+    # Weekly trend filter
     if df_w is not None:
         cw=df_w["Close"]; e20w=cw.ewm(span=20).mean(); e50w=cw.ewm(span=50).mean()
         weekly_bull=float(e20w.iloc[-1])>float(e50w.iloc[-1])
     else: weekly_bull=direction=="BUY"
     weekly_ok=weekly_bull==(direction=="BUY") or direction=="WAIT"
 
-    # 4. Session filter
+    # Session filter
     hour=datetime.datetime.now(datetime.timezone.utc).hour
     session_ok=(7<=hour<=17) or (12<=hour<=21)
     session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
 
-    # 5. MTF confirmation
+    # MTF confirmation
     def tf_sig(df_tf):
         if df_tf is None: return "WAIT"
         ct=df_tf["Close"]
@@ -504,18 +437,39 @@ def analyse_pair(symbol,pair_name):
     mtf_ok=(mtf_buys>mtf_sells and direction=="BUY") or (mtf_sells>mtf_buys and direction=="SELL")
     mtf_agree=f"BUY — {mtf_buys}/{len(mtf_sigs)} TFs" if mtf_buys>mtf_sells else f"SELL — {mtf_sells}/{len(mtf_sigs)} TFs" if mtf_sells>mtf_buys else "Mixed TFs"
 
+    # Candle info for display only (not used in scoring)
+    vol_ok=True; candle_quality_ok=True
+    o=float(df_d["Open"].iloc[-1]) if "Open" in df_d.columns else float(c.iloc[-2])
+    hi=float(h_.iloc[-1]); lo=float(l_.iloc[-1]); cl=float(c.iloc[-1])
+    po=float(df_d["Open"].iloc[-2]) if "Open" in df_d.columns else float(c.iloc[-3])
+    pc=float(c.iloc[-2]); body=abs(cl-o); full=hi-lo
+    uw=hi-max(cl,o); lw=min(cl,o)-lo
+    bull_engulf=cl>o and pc<po and cl>po and o<pc
+    bear_engulf=cl<o and pc>po and cl<po and o>pc
+    bull_pin=lw>body*2 and uw<body*0.5
+    bear_pin=uw>body*2 and lw<body*0.5
+    if bull_engulf: candle_name="Bullish Engulfing"
+    elif bear_engulf: candle_name="Bearish Engulfing"
+    elif bull_pin: candle_name="Hammer/Pin Bar"
+    elif bear_pin: candle_name="Shooting Star"
+    elif cl>o: candle_name="Bullish close"
+    else: candle_name="Bearish close"
+
+    # Trend strength (simple slope check)
+    trend_strong=abs(ema_slope)>0.05
+
     # ── SPECIALIST WEIGHTING ──────────────────────────────
     spec=SPECIALIST.get(pair_name,1.0)
     adj_conf=min(99,round(conf*spec)) if direction!="WAIT" else 50
 
-    # ── GRADE (A/B/C/D) ───────────────────────────────────
+    # ── GRADE (A/B/C) — tuned for 6 strategies ────────────
     agree_count=max(buys,sells)
-    filters_passed=sum([atr_ok,candle_quality_ok,weekly_ok,session_ok,mtf_ok])
-    # Grade A: 7+ strategies agree, 4+ filters pass, trend is strong
-    if adj_conf>=85 and agree_count>=7 and filters_passed>=4 and trend_strong: grade="A"
-    elif adj_conf>=75 and agree_count>=6 and filters_passed>=3: grade="B"
-    elif adj_conf>=62 and agree_count>=5 and filters_passed>=2: grade="C"
+    filters_passed=sum([atr_ok,weekly_ok,session_ok,mtf_ok])
+    if adj_conf>=83 and agree_count>=5 and filters_passed>=3: grade="A"
+    elif adj_conf>=66 and agree_count>=4 and filters_passed>=2: grade="B"
+    elif adj_conf>=50 and agree_count>=3 and filters_passed>=1: grade="C"
     else: grade="D"
+    adx=0  # not used in 6-strategy mode
 
     # Skip D-grade signals entirely — not worth showing
     if grade=="D" and direction!="WAIT":
@@ -550,7 +504,7 @@ def analyse_pair(symbol,pair_name):
     market_cond=f"{vol_label} — {trend_label} — {action_label}"
 
     # ── STRATEGY NAMES FOR DISPLAY ────────────────────────
-    strat_names="EMA Stack · RSI · MACD · Bollinger · S/R · BOS · Candle · Volume · ADX"
+    strat_names="EMA Stack · RSI · MACD · Bollinger · S/R · Break of Structure"
 
     return {
         "pair":pair_name,"symbol":symbol,"direction":direction,"signal":final_sig,
