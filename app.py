@@ -997,17 +997,41 @@ elif "News" in page:
 
     st.divider()
     selected=st.selectbox("AI news analysis for:",list(ALL_PAIRS.keys()))
-    if st.button("🤖 Analyse News Impact",use_container_width=True):
-        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
-        if not api_key: st.error("Add ANTHROPIC_API_KEY to secrets.")
+    if st.button("🤖 Analyse News Impact", use_container_width=True):
+        api_key = st.secrets.get("KIMI_API_KEY", "")
+
+        if not api_key:
+            st.error("Add KIMI_API_KEY to secrets.")
         else:
             with st.spinner("Analysing..."):
-                r=requests.post("https://api.anthropic.com/v1/messages",
-                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
-                    json={"model":"claude-sonnet-4-6","max_tokens":600,
-                        "messages":[{"role":"user","content":f"Analyse this week's economic calendar impact on {selected}. Give: 1) Bias direction 2) Key events to watch 3) Times to avoid. Be concise."}]},timeout=30)
-                if r.status_code==200:
-                    st.markdown(f"<div class='news-item'>{r.json()['content'][0]['text'].replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
+                r = requests.post(
+                    "https://api.moonshot.ai/v1/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    },
+                    json={
+                        "model": "YOUR_KIMI_MODEL",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": f"Analyse this week's economic calendar impact on {selected}. Give: 1) Bias direction 2) Key events to watch 3) Times to avoid. Be concise."
+                            }
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 600
+                    },
+                    timeout=30
+                )
+
+                if r.status_code == 200:
+                    response = r.json()["choices"][0]["message"]["content"]
+                    st.markdown(
+                        f"<div class='news-item'>{response.replace(chr(10), '<br>')}</div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.error(r.text)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: AI STRATEGY BUILDER
