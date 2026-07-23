@@ -1047,16 +1047,29 @@ elif "AI Strategy" in page:
     exp=st.selectbox("Experience",["Beginner","Intermediate","Advanced"])
     custom=st.text_area("Extra requirements",placeholder="e.g. only breakouts, SMC style...")
     if st.button("🚀 Build Strategy",type="primary",use_container_width=True):
-        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
-        if not api_key: st.error("Add ANTHROPIC_API_KEY to secrets.")
+        api_key=st.secrets.get("KIMI_API_KEY","")
+        if not api_key: st.error("Add KIMI_API_KEY to secrets.")
         else:
             with st.spinner("Building..."):
                 prompt=f"Build a complete {style} strategy for {', '.join(fav)}. {exp} level, {risk} risk, {session} session. {custom}. Include: Entry rules, SL placement, TP1/2/3, timeframes, risk rules, what to avoid."
-                r=requests.post("https://api.anthropic.com/v1/messages",
-                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
+                r=requests.post("https://api.moonshot.ai/v1/chat/completions",
+                    headers={
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}"
+},
+json={
+    "model": "kimi-k2.6",
+    "messages": [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ],
+    "max_tokens": 1200
+}
                     json={"model":"claude-sonnet-4-6","max_tokens":1200,"messages":[{"role":"user","content":prompt}]},timeout=30)
                 if r.status_code==200:
-                    strategy=r.json()["content"][0]["text"]
+                    strategy = r.json()["choices"][0]["message"]["content"]
                     st.session_state.ai_strategy=strategy
     if st.session_state.ai_strategy:
         st.markdown(f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
