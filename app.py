@@ -1067,8 +1067,6 @@ json={
     ],
     "max_tokens": 1200
 }
-                    json={"model":"claude-sonnet-4-6","max_tokens":1200,"messages":[{"role":"user","content":prompt}]},timeout=30)
-                if r.status_code==200:
                     strategy = r.json()["choices"][0]["message"]["content"]
                     st.session_state.ai_strategy=strategy
     if st.session_state.ai_strategy:
