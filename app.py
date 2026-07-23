@@ -1037,41 +1037,76 @@ elif "News" in page:
 # PAGE: AI STRATEGY BUILDER
 # ════════════════════════════════════════════════════════════
 elif "AI Strategy" in page:
-    st.markdown("### 🤖 AI Strategy Builder")
-    if not premium: st.error("🔒 Premium only."); st.stop()
-    c1,c2=st.columns(2)
-    style=c1.selectbox("Style",["Day Trading","Scalping","Swing Trading"])
-    risk=c2.selectbox("Risk",["Conservative","Moderate","Aggressive"])
-    fav=st.multiselect("Pairs",list(ALL_PAIRS.keys()),default=["EUR/USD","Gold (XAU/USD)"])
-    session=st.selectbox("Session",["London","New York","Asian","All"])
-    exp=st.selectbox("Experience",["Beginner","Intermediate","Advanced"])
-    custom=st.text_area("Extra requirements",placeholder="e.g. only breakouts, SMC style...")
-    if st.button("🚀 Build Strategy",type="primary",use_container_width=True):
-        api_key=st.secrets.get("KIMI_API_KEY","")
-        if not api_key: st.error("Add KIMI_API_KEY to secrets.")
-        else:
-            with st.spinner("Building..."):
-                prompt=f"Build a complete {style} strategy for {', '.join(fav)}. {exp} level, {risk} risk, {session} session. {custom}. Include: Entry rules, SL placement, TP1/2/3, timeframes, risk rules, what to avoid."
-                r=requests.post("https://api.moonshot.ai/v1/chat/completions",
-                    headers={
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {api_key}"
-},
-json={
-    "model": "kimi-k2.6",
-    "messages": [
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ],
-    "max_tokens": 1200
-}
-                    strategy = r.json()["choices"][0]["message"]["content"]
-                    st.session_state.ai_strategy=strategy
-    if st.session_state.ai_strategy:
-        st.markdown(f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
+st.markdown("### 🤖 AI Strategy Builder")
 
+if not premium:
+    st.error("🔒 Premium only.")
+    st.stop()
+
+c1, c2 = st.columns(2)
+
+style = c1.selectbox("Style", ["Day Trading", "Scalping", "Swing Trading"])
+risk = c2.selectbox("Risk", ["Conservative", "Moderate", "Aggressive"])
+
+fav = st.multiselect(
+    "Pairs",
+    list(ALL_PAIRS.keys()),
+    default=["EUR/USD", "Gold (XAU/USD)"]
+)
+
+session = st.selectbox("Session", ["London", "New York", "Asian", "All"])
+exp = st.selectbox("Experience", ["Beginner", "Intermediate", "Advanced"])
+
+custom = st.text_area(
+    "Extra requirements",
+    placeholder="e.g. only breakouts, SMC style..."
+)
+
+if st.button("🚀 Build Strategy", type="primary", use_container_width=True):
+    api_key = st.secrets.get("KIMI_API_KEY", "")
+
+    if not api_key:
+        st.error("Add KIMI_API_KEY to secrets.")
+    else:
+        with st.spinner("Building..."):
+            prompt = (
+                f"Build a complete {style} strategy for {', '.join(fav)}. "
+                f"{exp} level, {risk} risk, {session} session. "
+                f"{custom}. Include: Entry rules, SL placement, TP1/2/3, "
+                f"timeframes, risk rules, what to avoid."
+            )
+
+            r = requests.post(
+                "https://api.moonshot.ai/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}"
+                },
+                json={
+                    "model": "kimi-k2.6",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    "max_tokens": 1200
+                },
+                timeout=30
+            )
+
+            if r.status_code == 200:
+                strategy = r.json()["choices"][0]["message"]["content"]
+                st.session_state.ai_strategy = strategy
+            else:
+                st.error(f"API Error ({r.status_code})")
+                st.code(r.text)
+
+if st.session_state.ai_strategy:
+    st.markdown(
+        f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10), '<br>')}</div>",
+        unsafe_allow_html=True
+    )
 # ════════════════════════════════════════════════════════════
 # PAGE: AI CHART ANALYSIS
 # ════════════════════════════════════════════════════════════
