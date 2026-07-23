@@ -1037,7 +1037,7 @@ elif "News" in page:
 # PAGE: AI STRATEGY BUILDER
 # ════════════════════════════════════════════════════════════
 elif "AI Strategy" in page:
-st.markdown("### 🤖 AI Strategy Builder")
+    st.markdown("### 🤖 AI Strategy Builder")
 
 if not premium:
     st.error("🔒 Premium only.")
