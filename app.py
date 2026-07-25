@@ -697,12 +697,38 @@ elif "Pulse" in page:
 
     compact=st.toggle("Compact view",value=False)
 
-    # Only scan when button is pressed — prevents segfault on startup
-    if "pulse_signals" not in st.session_state:
-        st.session_state.pulse_signals=[]
+    # Session state init
+    if "pulse_signals"      not in st.session_state: st.session_state.pulse_signals=[]
+    if "pulse_last_scan"    not in st.session_state: st.session_state.pulse_last_scan=None
+    if "auto_refresh"       not in st.session_state: st.session_state.auto_refresh=False
+    if "refresh_interval"   not in st.session_state: st.session_state.refresh_interval=15
 
-    col_r1,col_r2=st.columns(2)
-    if col_r1.button("🔄 Refresh Signals",use_container_width=True,type="primary"):
+    # Signal expiry: mark signals older than X minutes as expired
+    EXPIRY_MINUTES = 60  # signals expire after 60 min
+    def is_expired(sig):
+        try:
+            scan_dt = datetime.datetime.fromisoformat(sig.get("scan_time",""))
+            if scan_dt.tzinfo is None: scan_dt = scan_dt.replace(tzinfo=datetime.timezone.utc)
+            age_mins = (datetime.datetime.now(datetime.timezone.utc) - scan_dt).total_seconds() / 60
+            return age_mins > EXPIRY_MINUTES
+        except: return False
+
+    # Auto-refresh logic
+    col_r1,col_r2,col_r3 = st.columns([2,1,1])
+    auto = col_r2.toggle("⚡ Auto", value=st.session_state.auto_refresh, help="Auto-refresh every 15 minutes")
+    st.session_state.auto_refresh = auto
+    interval = col_r3.selectbox("Every", [5,10,15,30], index=2, label_visibility="collapsed")
+    st.session_state.refresh_interval = interval
+
+    # Check if auto-refresh needed
+    should_scan = False
+    if st.session_state.auto_refresh and st.session_state.pulse_last_scan:
+        age = (datetime.datetime.now(datetime.timezone.utc) - st.session_state.pulse_last_scan).total_seconds() / 60
+        if age >= interval:
+            should_scan = True
+            st.info(f"⚡ Auto-refreshing... (last scan {round(age)}m ago)")
+
+    if col_r1.button("🔄 Refresh Signals",use_container_width=True,type="primary") or should_scan:
         signals_temp=[]
         prog=st.progress(0); items=list(pairs.items()); status=st.empty()
         for i,(name,sym) in enumerate(items):
@@ -714,8 +740,16 @@ elif "Pulse" in page:
             prog.progress((i+1)/len(items))
         prog.empty(); status.empty()
         st.session_state.pulse_signals=signals_temp
+        st.session_state.pulse_last_scan=datetime.datetime.now(datetime.timezone.utc)
         st.rerun()
-    col_r2.caption("Tap Refresh to scan markets")
+
+    # Show last scan time + next refresh
+    if st.session_state.pulse_last_scan:
+        age_m = round((datetime.datetime.now(datetime.timezone.utc) - st.session_state.pulse_last_scan).total_seconds()/60,1)
+        next_in = max(0, round(interval - age_m, 1))
+        col_info = st.columns(2)
+        col_info[0].caption(f"Last scan: {age_m}m ago")
+        if auto: col_info[1].caption(f"Next refresh in: {next_in}m")
 
     signals=st.session_state.pulse_signals
 
@@ -734,24 +768,47 @@ elif "Pulse" in page:
     if not signals:
         st.info("⏳ No strong signals right now. Market may be consolidating — check back later.")
     else:
-        for sig in signals:
-            if not compact: render_signal_card(sig)
-            else:
-                d_color="#3fb950" if "BUY" in sig["direction"] else "#f85149"
-                dp=5 if sig["entry"]<100 else 2
-                st.markdown(f"""
-                <div style='background:#161b22;border-radius:10px;padding:10px;margin-bottom:6px;
-                  border-left:3px solid {d_color};display:flex;justify-content:space-between;align-items:center'>
-                  <div>
-                    <b>{sig["pair"]}</b>
-                    <span class='grade-{sig["grade"].lower()} grade-badge' style='margin-left:6px'>{sig["grade"]}</span>
-                    <span style='color:{d_color};font-weight:700;margin-left:6px'>{sig["direction"]}</span>
-                  </div>
-                  <div style='text-align:right'>
-                    <div style='color:#ffd200;font-weight:800'>{sig["confidence"]}%</div>
-                    <div style='font-size:11px;color:#8b949e'>E:{round(sig["entry"],dp)} SL:{round(sig["sl"],dp)}</div>
-                  </div>
-                </div>""",unsafe_allow_html=True)
+        active_sigs  = [s for s in signals if not is_expired(s)]
+        expired_sigs = [s for s in signals if is_expired(s)]
+
+        if active_sigs:
+            for sig in active_sigs:
+                if not compact:
+                    render_signal_card(sig)
+                else:
+                    d_color="#3fb950" if "BUY" in sig["direction"] else "#f85149"
+                    dp=5 if sig["entry"]<100 else 2
+                    st.markdown(f"""
+                    <div style='background:#161b22;border-radius:10px;padding:10px;margin-bottom:6px;
+                      border-left:3px solid {d_color};display:flex;justify-content:space-between;align-items:center'>
+                      <div>
+                        <b>{sig["pair"]}</b>
+                        <span class='grade-{sig["grade"].lower()} grade-badge' style='margin-left:6px'>{sig["grade"]}</span>
+                        <span style='color:{d_color};font-weight:700;margin-left:6px'>{sig["direction"]}</span>
+                      </div>
+                      <div style='text-align:right'>
+                        <div style='color:#ffd200;font-weight:800'>{sig["confidence"]}%</div>
+                        <div style='font-size:11px;color:#8b949e'>E:{round(sig["entry"],dp)} SL:{round(sig["sl"],dp)}</div>
+                      </div>
+                    </div>""",unsafe_allow_html=True)
+        else:
+            st.warning("⏰ All signals have expired. Tap Refresh to scan for new ones.")
+
+        # Show expired signals collapsed
+        if expired_sigs:
+            with st.expander(f"⏰ {len(expired_sigs)} Expired Signal(s) — Do NOT trade these"):
+                for sig in expired_sigs:
+                    dp=5 if sig["entry"]<100 else 2
+                    st.markdown(f"""
+                    <div style='background:#1a1a1a;border-radius:10px;padding:10px;margin-bottom:6px;
+                      border-left:3px solid #444;opacity:0.6'>
+                      <b style='color:#666'>{sig["pair"]}</b>
+                      <span style='color:#666;margin-left:8px'>{sig["direction"]} {sig["confidence"]}%</span>
+                      <span style='background:#333;color:#666;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:8px'>
+                        ⏰ EXPIRED — {sig.get("time_ago","old")}
+                      </span><br>
+                      <small style='color:#555'>Entry: {round(sig["entry"],dp)} | Do NOT trade — signal is too old</small>
+                    </div>""",unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: WATCHLIST
@@ -997,116 +1054,46 @@ elif "News" in page:
 
     st.divider()
     selected=st.selectbox("AI news analysis for:",list(ALL_PAIRS.keys()))
-    if st.button("🤖 Analyse News Impact", use_container_width=True):
-        api_key = st.secrets.get("KIMI_API_KEY", "")
-
-        if not api_key:
-            st.error("Add KIMI_API_KEY to secrets.")
+    if st.button("🤖 Analyse News Impact",use_container_width=True):
+        api_key=st.secrets.get("GEMINI_API_KEY","")
+        if not api_key: st.error("Add GEMINI_API_KEY to secrets.")
         else:
             with st.spinner("Analysing..."):
-                r = requests.post(
-                    "https://api.moonshot.ai/v1/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {api_key}"
-                    },
-                    json={
-                        "model": "YOUR_KIMI_MODEL",
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": f"Analyse this week's economic calendar impact on {selected}. Give: 1) Bias direction 2) Key events to watch 3) Times to avoid. Be concise."
-                            }
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 600
-                    },
-                    timeout=30
-                )
-
-                if r.status_code == 200:
-                    response = r.json()["choices"][0]["message"]["content"]
-                    st.markdown(
-                        f"<div class='news-item'>{response.replace(chr(10), '<br>')}</div>",
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.error(r.text)
+                r=requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+api_key,
+                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
+                    json={"model":"claude-sonnet-4-6","max_tokens":600,
+                        "messages":[{"role":"user","content":f"Analyse this week's economic calendar impact on {selected}. Give: 1) Bias direction 2) Key events to watch 3) Times to avoid. Be concise."}]},timeout=30)
+                if r.status_code==200:
+                    st.markdown(f"<div class='news-item'>{r.json()['content'][0]['text'].replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: AI STRATEGY BUILDER
 # ════════════════════════════════════════════════════════════
 elif "AI Strategy" in page:
     st.markdown("### 🤖 AI Strategy Builder")
+    if not premium: st.error("🔒 Premium only."); st.stop()
+    c1,c2=st.columns(2)
+    style=c1.selectbox("Style",["Day Trading","Scalping","Swing Trading"])
+    risk=c2.selectbox("Risk",["Conservative","Moderate","Aggressive"])
+    fav=st.multiselect("Pairs",list(ALL_PAIRS.keys()),default=["EUR/USD","Gold (XAU/USD)"])
+    session=st.selectbox("Session",["London","New York","Asian","All"])
+    exp=st.selectbox("Experience",["Beginner","Intermediate","Advanced"])
+    custom=st.text_area("Extra requirements",placeholder="e.g. only breakouts, SMC style...")
+    if st.button("🚀 Build Strategy",type="primary",use_container_width=True):
+        api_key=st.secrets.get("GEMINI_API_KEY","")
+        if not api_key: st.error("Add GEMINI_API_KEY to secrets.")
+        else:
+            with st.spinner("Building..."):
+                prompt=f"Build a complete {style} strategy for {', '.join(fav)}. {exp} level, {risk} risk, {session} session. {custom}. Include: Entry rules, SL placement, TP1/2/3, timeframes, risk rules, what to avoid."
+                r=requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+api_key,
+                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
+                    json={"model":"claude-sonnet-4-6","max_tokens":1200,"messages":[{"role":"user","content":prompt}]},timeout=30)
+                if r.status_code==200:
+                    strategy=r.json()["content"][0]["text"]
+                    st.session_state.ai_strategy=strategy
+    if st.session_state.ai_strategy:
+        st.markdown(f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
 
-if not premium:
-    st.error("🔒 Premium only.")
-    st.stop()
-
-c1, c2 = st.columns(2)
-
-style = c1.selectbox("Style", ["Day Trading", "Scalping", "Swing Trading"])
-risk = c2.selectbox("Risk", ["Conservative", "Moderate", "Aggressive"])
-
-fav = st.multiselect(
-    "Pairs",
-    list(ALL_PAIRS.keys()),
-    default=["EUR/USD", "Gold (XAU/USD)"]
-)
-
-session = st.selectbox("Session", ["London", "New York", "Asian", "All"])
-exp = st.selectbox("Experience", ["Beginner", "Intermediate", "Advanced"])
-
-custom = st.text_area(
-    "Extra requirements",
-    placeholder="e.g. only breakouts, SMC style..."
-)
-
-if st.button("🚀 Build Strategy", type="primary", use_container_width=True):
-    api_key = st.secrets.get("KIMI_API_KEY", "")
-
-    if not api_key:
-        st.error("Add KIMI_API_KEY to secrets.")
-    else:
-        with st.spinner("Building..."):
-            prompt = (
-                f"Build a complete {style} strategy for {', '.join(fav)}. "
-                f"{exp} level, {risk} risk, {session} session. "
-                f"{custom}. Include: Entry rules, SL placement, TP1/2/3, "
-                f"timeframes, risk rules, what to avoid."
-            )
-
-            r = requests.post(
-                "https://api.moonshot.ai/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
-                },
-                json={
-                    "model": "kimi-k2.6",
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    "max_tokens": 1200
-                },
-                timeout=30
-            )
-
-            if r.status_code == 200:
-                strategy = r.json()["choices"][0]["message"]["content"]
-                st.session_state.ai_strategy = strategy
-            else:
-                st.error(f"API Error ({r.status_code})")
-                st.code(r.text)
-
-if st.session_state.ai_strategy:
-    st.markdown(
-        f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10), '<br>')}</div>",
-        unsafe_allow_html=True
-    )
 # ════════════════════════════════════════════════════════════
 # PAGE: AI CHART ANALYSIS
 # ════════════════════════════════════════════════════════════
@@ -1122,11 +1109,11 @@ elif "Chart AI" in page:
         img_b64=base64.b64encode(uploaded.read()).decode()
         ext=uploaded.name.split(".")[-1].lower()
         media_type=f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
-        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
-        if not api_key: st.error("Add ANTHROPIC_API_KEY to secrets.")
+        api_key=st.secrets.get("GEMINI_API_KEY","")
+        if not api_key: st.error("Add GEMINI_API_KEY to secrets.")
         else:
             with st.spinner("Analysing chart..."):
-                r=requests.post("https://api.anthropic.com/v1/messages",
+                r=requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+api_key,
                     headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
                     json={"model":"claude-sonnet-4-6","max_tokens":1000,
                         "messages":[{"role":"user","content":[
