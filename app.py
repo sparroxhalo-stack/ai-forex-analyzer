@@ -1081,16 +1081,36 @@ elif "AI Strategy" in page:
     custom=st.text_area("Extra requirements",placeholder="e.g. only breakouts, SMC style...")
     if st.button("🚀 Build Strategy",type="primary",use_container_width=True):
         api_key=st.secrets.get("GEMINI_API_KEY","")
-        if not api_key: st.error("Add GEMINI_API_KEY to secrets.")
+        if not api_key: st.error("⚠️ Add GEMINI_API_KEY to Streamlit secrets. Get free key at aistudio.google.com")
         else:
-            with st.spinner("Building..."):
-                prompt=f"Build a complete {style} strategy for {', '.join(fav)}. {exp} level, {risk} risk, {session} session. {custom}. Include: Entry rules, SL placement, TP1/2/3, timeframes, risk rules, what to avoid."
-                r=requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+api_key,
-                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
-                    json={"model":"claude-sonnet-4-6","max_tokens":1200,"messages":[{"role":"user","content":prompt}]},timeout=30)
-                if r.status_code==200:
-                    strategy=r.json()["content"][0]["text"]
-                    st.session_state.ai_strategy=strategy
+            with st.spinner("🤖 Gemini is building your strategy..."):
+                prompt=f"""You are a professional forex trading strategy builder.
+Build a complete {style} strategy for {', '.join(fav)}.
+Trader: {exp} level, {risk} risk, trades {session} session.
+Extra: {custom or 'none'}
+Include:
+1. Strategy Name & Summary
+2. Exact Entry Rules (step by step)
+3. Stop Loss Placement
+4. Take Profit (TP1=1R, TP2=2R, TP3=3R)
+5. Best Timeframes
+6. Risk Management Rules
+7. What to avoid / when NOT to trade
+Be specific and practical."""
+                try:
+                    r=requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+                        headers={"Content-Type":"application/json"},
+                        json={"contents":[{"parts":[{"text":prompt}]}],
+                              "generationConfig":{"maxOutputTokens":1500,"temperature":0.7}},
+                        timeout=30)
+                    if r.status_code==200:
+                        strategy=r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        st.session_state.ai_strategy=strategy
+                    else:
+                        st.error(f"Gemini error {r.status_code}: {r.json().get('error',{}).get('message','Unknown error')}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
     if st.session_state.ai_strategy:
         st.markdown(f"<div class='strategy-card'>{st.session_state.ai_strategy.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
 
@@ -1106,23 +1126,51 @@ elif "Chart AI" in page:
     question=st.text_area("Your question",placeholder="Is this a good entry? Where is support?")
     if uploaded and st.button("🔍 Analyse",type="primary",use_container_width=True):
         import base64
-        img_b64=base64.b64encode(uploaded.read()).decode()
-        ext=uploaded.name.split(".")[-1].lower()
-        media_type=f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
-        api_key=st.secrets.get("GEMINI_API_KEY","")
-        if not api_key: st.error("Add GEMINI_API_KEY to secrets.")
+        img_bytes = uploaded.read()
+        img_b64   = base64.b64encode(img_bytes).decode()
+        ext       = uploaded.name.split(".")[-1].lower()
+        media_type= f"image/{'jpeg' if ext in ['jpg','jpeg'] else 'png' if ext=='png' else 'webp'}"
+        api_key   = st.secrets.get("GEMINI_API_KEY","")
+        if not api_key:
+            st.error("⚠️ Add GEMINI_API_KEY to Streamlit secrets.")
         else:
-            with st.spinner("Analysing chart..."):
-                r=requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+api_key,
-                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
-                    json={"model":"claude-sonnet-4-6","max_tokens":1000,
-                        "messages":[{"role":"user","content":[
-                            {"type":"image","source":{"type":"base64","media_type":media_type,"data":img_b64}},
-                            {"type":"text","text":f"Analyse this {pair_ctx} {tf_ctx} chart. {question if question else 'Give full technical analysis with entry, SL and TP recommendations.'}"}
-                        ]}]},timeout=40)
-                if r.status_code==200:
-                    st.markdown(f"<div class='strategy-card'>{r.json()['content'][0]['text'].replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
-                else: st.error(f"Error {r.status_code}")
+            with st.spinner("🤖 Gemini is analysing your chart..."):
+                chart_prompt = f"""You are a professional forex technical analyst.
+Analyse this {pair_ctx} {tf_ctx} chart screenshot.
+Trader question: {question if question else 'Give full technical analysis.'}
+
+Provide:
+1. Overall trend direction
+2. Key support and resistance levels
+3. Chart patterns visible
+4. Candlestick patterns
+5. Recommended direction (BUY/SELL/WAIT)
+6. Entry, Stop Loss and Take Profit levels
+7. Key risks to watch
+
+Be specific and actionable."""
+                try:
+                    r=requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+                        headers={"Content-Type":"application/json"},
+                        json={
+                            "contents":[{"parts":[
+                                {"inline_data":{"mime_type":media_type,"data":img_b64}},
+                                {"text":chart_prompt}
+                            ]}],
+                            "generationConfig":{"maxOutputTokens":1200,"temperature":0.4}
+                        },
+                        timeout=40)
+                    if r.status_code==200:
+                        analysis=r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        st.subheader("🤖 Gemini Analysis")
+                        st.markdown(f"<div class='strategy-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
+                    else:
+                        err=r.json().get("error",{})
+                        st.error(f"Gemini error {r.status_code}: {err.get('message','Unknown. Check API key.')}")
+                        st.caption("Common fixes: Make sure image is under 4MB · Use PNG or JPG · Check API key is valid")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: ALERTS
