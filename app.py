@@ -1055,16 +1055,23 @@ elif "News" in page:
     st.divider()
     selected=st.selectbox("AI news analysis for:",list(ALL_PAIRS.keys()))
     if st.button("🤖 Analyse News Impact",use_container_width=True):
-        api_key=st.secrets.get("GEMINI_API_KEY","")
-        if not api_key: st.error("Add GEMINI_API_KEY to secrets.")
+        api_key=st.secrets.get("GROQ_API_KEY","")
+        if not api_key:
+            st.error("⚠️ Add GROQ_API_KEY to Streamlit secrets. Get free key at console.groq.com")
         else:
-            with st.spinner("Analysing..."):
-                r=requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+api_key,
-                    headers={"Content-Type":"application/json","x-api-key":api_key,"anthropic-version":"2023-06-01"},
-                    json={"model":"claude-sonnet-4-6","max_tokens":600,
-                        "messages":[{"role":"user","content":f"Analyse this week's economic calendar impact on {selected}. Give: 1) Bias direction 2) Key events to watch 3) Times to avoid. Be concise."}]},timeout=30)
-                if r.status_code==200:
-                    st.markdown(f"<div class='news-item'>{r.json()['content'][0]['text'].replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
+            with st.spinner("🤖 Analysing news impact..."):
+                try:
+                    r=requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
+                        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":f"You are a forex news analyst. Analyse this week calendar impact on {selected}. Give: 1) Bias 2) Key events 3) Times to avoid. Be concise. Calendar: {news_df.to_string(index=False)[:500]}"}],"max_tokens":600,"temperature":0.5},timeout=30)
+                    if r.status_code==200:
+                        analysis=r.json()["choices"][0]["message"]["content"]
+                        st.markdown(f"<div class='news-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
+                    else:
+                        st.error(f"Groq error {r.status_code}: {r.json().get('error',{}).get('message','Unknown')}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: AI STRATEGY BUILDER
@@ -1080,35 +1087,39 @@ elif "AI Strategy" in page:
     exp=st.selectbox("Experience",["Beginner","Intermediate","Advanced"])
     custom=st.text_area("Extra requirements",placeholder="e.g. only breakouts, SMC style...")
     if st.button("🚀 Build Strategy",type="primary",use_container_width=True):
-        api_key=st.secrets.get("GEMINI_API_KEY","")
-        if not api_key: st.error("⚠️ Add GEMINI_API_KEY to Streamlit secrets. Get free key at aistudio.google.com")
+        api_key=st.secrets.get("GROQ_API_KEY","")
+        if not api_key:
+            st.error("⚠️ Add GROQ_API_KEY to Streamlit secrets. Get free key at console.groq.com")
         else:
-            with st.spinner("🤖 Gemini is building your strategy..."):
+            with st.spinner("🤖 Building your strategy..."):
                 prompt=f"""You are a professional forex trading strategy builder.
 Build a complete {style} strategy for {', '.join(fav)}.
 Trader: {exp} level, {risk} risk, trades {session} session.
-Extra: {custom or 'none'}
-Include:
-1. Strategy Name & Summary
+Extra requirements: {custom or 'none'}
+
+Include these sections:
+1. Strategy Name and Summary
 2. Exact Entry Rules (step by step)
 3. Stop Loss Placement
-4. Take Profit (TP1=1R, TP2=2R, TP3=3R)
-5. Best Timeframes
+4. Take Profit Targets (TP1=1R, TP2=2R, TP3=3R)
+5. Best Timeframes to use
 6. Risk Management Rules
-7. What to avoid / when NOT to trade
-Be specific and practical."""
+7. Best assets for this strategy
+8. What to avoid and when NOT to trade
+
+Be specific, practical and actionable."""
                 try:
                     r=requests.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
-                        headers={"Content-Type":"application/json"},
-                        json={"contents":[{"parts":[{"text":prompt}]}],
-                              "generationConfig":{"maxOutputTokens":1500,"temperature":0.7}},
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
+                        json={"model":"llama-3.3-70b-versatile",
+                              "messages":[{"role":"user","content":prompt}],
+                              "max_tokens":1500,"temperature":0.7},
                         timeout=30)
                     if r.status_code==200:
-                        strategy=r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                        st.session_state.ai_strategy=strategy
+                        st.session_state.ai_strategy=r.json()["choices"][0]["message"]["content"]
                     else:
-                        st.error(f"Gemini error {r.status_code}: {r.json().get('error',{}).get('message','Unknown error')}")
+                        st.error(f"Groq error {r.status_code}: {r.json().get('error',{}).get('message','Unknown')}")
                 except Exception as e:
                     st.error(f"Error: {e}")
     if st.session_state.ai_strategy:
@@ -1126,49 +1137,51 @@ elif "Chart AI" in page:
     question=st.text_area("Your question",placeholder="Is this a good entry? Where is support?")
     if uploaded and st.button("🔍 Analyse",type="primary",use_container_width=True):
         import base64
-        img_bytes = uploaded.read()
-        img_b64   = base64.b64encode(img_bytes).decode()
-        ext       = uploaded.name.split(".")[-1].lower()
-        media_type= f"image/{'jpeg' if ext in ['jpg','jpeg'] else 'png' if ext=='png' else 'webp'}"
-        api_key   = st.secrets.get("GEMINI_API_KEY","")
+        img_bytes  = uploaded.read()
+        img_b64    = base64.b64encode(img_bytes).decode()
+        ext        = uploaded.name.split(".")[-1].lower()
+        media_type = f"image/{'jpeg' if ext in ['jpg','jpeg'] else 'png'}"
+        api_key    = st.secrets.get("GROQ_API_KEY","")
         if not api_key:
-            st.error("⚠️ Add GEMINI_API_KEY to Streamlit secrets.")
+            st.error("⚠️ Add GROQ_API_KEY to Streamlit secrets. Get free key at console.groq.com")
         else:
-            with st.spinner("🤖 Gemini is analysing your chart..."):
-                chart_prompt = f"""You are a professional forex technical analyst.
+            with st.spinner("🤖 Analysing your chart..."):
+                chart_prompt=f"""You are a professional forex technical analyst.
 Analyse this {pair_ctx} {tf_ctx} chart screenshot.
 Trader question: {question if question else 'Give full technical analysis.'}
 
 Provide:
-1. Overall trend direction
-2. Key support and resistance levels
-3. Chart patterns visible
+1. Overall trend direction (Bullish/Bearish/Neutral)
+2. Key support and resistance levels you can see
+3. Chart patterns visible (triangles, flags, H&S etc)
 4. Candlestick patterns
 5. Recommended direction (BUY/SELL/WAIT)
-6. Entry, Stop Loss and Take Profit levels
+6. Suggested Entry, Stop Loss and Take Profit levels
 7. Key risks to watch
 
 Be specific and actionable."""
                 try:
+                    # Groq vision model supports images
                     r=requests.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
-                        headers={"Content-Type":"application/json"},
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
                         json={
-                            "contents":[{"parts":[
-                                {"inline_data":{"mime_type":media_type,"data":img_b64}},
-                                {"text":chart_prompt}
+                            "model":"llama-3.2-11b-vision-preview",
+                            "messages":[{"role":"user","content":[
+                                {"type":"image_url","image_url":{"url":f"data:{media_type};base64,{img_b64}"}},
+                                {"type":"text","text":chart_prompt}
                             ]}],
-                            "generationConfig":{"maxOutputTokens":1200,"temperature":0.4}
+                            "max_tokens":1200,"temperature":0.4
                         },
                         timeout=40)
                     if r.status_code==200:
-                        analysis=r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                        st.subheader("🤖 Gemini Analysis")
+                        analysis=r.json()["choices"][0]["message"]["content"]
+                        st.subheader("🤖 AI Chart Analysis")
                         st.markdown(f"<div class='strategy-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
                     else:
                         err=r.json().get("error",{})
-                        st.error(f"Gemini error {r.status_code}: {err.get('message','Unknown. Check API key.')}")
-                        st.caption("Common fixes: Make sure image is under 4MB · Use PNG or JPG · Check API key is valid")
+                        st.error(f"Groq error {r.status_code}: {err.get('message','Unknown')}")
+                        st.caption("Tips: Use PNG or JPG under 4MB · Make sure API key is valid")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
