@@ -369,22 +369,66 @@ def analyse_pair(symbol,pair_name):
     else:                                  sr_sig="SELL"
 
     # ── STRATEGY 6: BREAK OF STRUCTURE (BOS/CHoCH) ────────
-    # Look for breaks of recent swing highs/lows
     lookback_h=float(h_.iloc[-20:-3].max())
     lookback_l=float(l_.iloc[-20:-3].min())
     prev_h=float(h_.iloc[-40:-20].max()) if len(h_)>=40 else lookback_h
     prev_l=float(l_.iloc[-40:-20].min()) if len(l_)>=40 else lookback_l
-    # Strong BOS = higher high + price above previous swing
     strong_bull_bos=price>lookback_h and lookback_h>prev_h
     strong_bear_bos=price<lookback_l and lookback_l<prev_l
-    if strong_bull_bos:             bos_sig="BUY"
-    elif strong_bear_bos:           bos_sig="SELL"
-    elif price>lookback_h:          bos_sig="BUY"
-    elif price<lookback_l:          bos_sig="SELL"
-    else:                           bos_sig="WAIT"
+    if strong_bull_bos:    bos_sig="BUY"
+    elif strong_bear_bos:  bos_sig="SELL"
+    elif price>lookback_h: bos_sig="BUY"
+    elif price<lookback_l: bos_sig="SELL"
+    else:                  bos_sig="WAIT"
 
-    # ── COMBINE ORIGINAL 6 STRATEGIES ────────────────────
-    all_sigs=[ema_sig,rsi_sig,macd_sig,bb_sig,sr_sig,bos_sig]
+    # ── STRATEGY 7: ORDER BLOCKS (SMC) ────────────────────
+    # Bullish OB: last bearish candle before a strong bullish move up
+    # Bearish OB: last bullish candle before a strong bearish move down
+    ob_sig="WAIT"; ob_level=0; ob_name=""
+    try:
+        opens=df_d["Open"].values if "Open" in df_d.columns else c.shift(1).values
+        closes=c.values; highs=h_.values; lows=l_.values
+        # Look back 30 bars for order blocks
+        for i in range(len(closes)-2, max(len(closes)-30,2), -1):
+            # Bullish OB: bearish candle followed by strong bullish move
+            if closes[i]<opens[i]:  # bearish candle
+                # Check if next 3 candles moved up strongly
+                if i+3<len(closes) and closes[i+3]>highs[i]*1.001:
+                    ob_high=highs[i]; ob_low=lows[i]
+                    # Is current price at/near this OB?
+                    if ob_low<=price<=ob_high*1.002:
+                        ob_sig="BUY"; ob_level=round((ob_high+ob_low)/2,5)
+                        ob_name=f"Bullish OB @ {ob_level}"; break
+            # Bearish OB: bullish candle followed by strong bearish move
+            elif closes[i]>opens[i]:  # bullish candle
+                if i+3<len(closes) and closes[i+3]<lows[i]*0.999:
+                    ob_high=highs[i]; ob_low=lows[i]
+                    if ob_low*0.998<=price<=ob_high:
+                        ob_sig="SELL"; ob_level=round((ob_high+ob_low)/2,5)
+                        ob_name=f"Bearish OB @ {ob_level}"; break
+    except: pass
+
+    # ── STRATEGY 8: FAIR VALUE GAP (FVG) ──────────────────
+    fvg_sig="WAIT"; fvg_name=""
+    try:
+        if len(h_)>=3:
+            # Bullish FVG: gap between candle[i-2].high and candle[i].low
+            for i in range(len(closes)-1, max(len(closes)-15,2), -1):
+                prev_high=highs[i-2]; curr_low=lows[i]
+                prev_low=lows[i-2];   curr_high=highs[i]
+                # Bullish FVG: current low > prev high (gap up)
+                if curr_low>prev_high and price<=curr_low*1.001:
+                    fvg_sig="BUY"; fvg_name=f"Bullish FVG {round(prev_high,5)}-{round(curr_low,5)}"; break
+                # Bearish FVG: current high < prev low (gap down)
+                elif curr_high<prev_low and price>=curr_high*0.999:
+                    fvg_sig="SELL"; fvg_name=f"Bearish FVG {round(curr_high,5)}-{round(prev_low,5)}"; break
+    except: pass
+
+    # ── COMBINE 8 STRATEGIES ─────────────────────────────
+    # Core 6 always count, OB+FVG add extra weight
+    all_sigs=[ema_sig,rsi_sig,macd_sig,bb_sig,sr_sig,bos_sig,ob_sig,fvg_sig]
+    # Extra weight for SMC signals — if OB or FVG agrees, boost confidence
+    smc_bonus=sum(1 for s in [ob_sig,fvg_sig] if s!="WAIT")
     buys=sum(1 for s in all_sigs if s=="BUY")
     sells=sum(1 for s in all_sigs if s=="SELL")
     total=len(all_sigs)
@@ -465,8 +509,8 @@ def analyse_pair(symbol,pair_name):
     # ── GRADE (A/B/C) — tuned for 6 strategies ────────────
     agree_count=max(buys,sells)
     filters_passed=sum([atr_ok,weekly_ok,session_ok,mtf_ok])
-    if adj_conf>=83 and agree_count>=5 and filters_passed>=3: grade="A"
-    elif adj_conf>=66 and agree_count>=4 and filters_passed>=2: grade="B"
+    if adj_conf>=83 and agree_count>=6 and filters_passed>=3: grade="A"
+    elif adj_conf>=66 and agree_count>=5 and filters_passed>=2: grade="B"
     elif adj_conf>=50 and agree_count>=3 and filters_passed>=1: grade="C"
     else: grade="D"
     adx=0  # not used in 6-strategy mode
@@ -504,7 +548,7 @@ def analyse_pair(symbol,pair_name):
     market_cond=f"{vol_label} — {trend_label} — {action_label}"
 
     # ── STRATEGY NAMES FOR DISPLAY ────────────────────────
-    strat_names="EMA Stack · RSI · MACD · Bollinger · S/R · Break of Structure"
+    strat_names="EMA · RSI · MACD · BB · S/R · BOS · Order Block · FVG"
 
     return {
         "pair":pair_name,"symbol":symbol,"direction":direction,"signal":final_sig,
@@ -515,7 +559,7 @@ def analyse_pair(symbol,pair_name):
         "candle_ok":candle_quality_ok,"vol_ok":vol_ok,
         "weekly_ok":weekly_ok,"session_ok":session_ok,"mtf_ok":mtf_ok,
         "session_label":session_label,"strategies":strat_names,
-        "agree":f"{agree_count}/{total} agree","rsi":round(rsi_val,1),
+        "agree":f"{agree_count}/8 agree","ob_name":ob_name,"fvg_name":fvg_name,"smc_bonus":smc_bonus,"rsi":round(rsi_val,1),
         "adx":round(adx,1),"candle_name":candle_name,
         "buys":buys,"sells":sells,
         "scan_time":scan_time,
@@ -1000,36 +1044,316 @@ elif "Precision" in page:
 # PAGE: PROP FIRM
 # ════════════════════════════════════════════════════════════
 elif "Prop Firm" in page:
-    st.markdown("### 🏢 Prop Firm Tools")
+    st.markdown("### 🏢 Prop Firm Challenge Tracker")
     if not premium: st.error("🔒 Premium only."); st.stop()
-    c1,c2=st.columns(2)
-    firm=c1.selectbox("Firm",["FTMO","MyForexFunds","The5ers","FundedNext"])
-    account=c2.number_input("Account ($)",min_value=1000.0,value=10000.0)
-    c3,c4=st.columns(2)
-    profit=c3.number_input("Current Profit ($)",value=0.0)
-    loss=c4.number_input("Current Loss ($)",value=0.0,min_value=0.0)
-    rules={"FTMO":(5,10,10),"MyForexFunds":(5,10,8),"The5ers":(4,8,8),"FundedNext":(5,10,10)}
-    dl_pct,ml_pct,pt_pct=rules.get(firm,(5,10,10))
-    dl=account*dl_pct/100; ml=account*ml_pct/100; pt=account*pt_pct/100
-    rem_daily=max(0,dl-loss); rem_max=max(0,ml-loss); need=max(0,pt-profit)
-    used_pct=loss/dl if dl>0 else 0
+
+    FIRMS_DATA={
+        "FTMO":         {"e":"🏆","c":"#1a6cff","daily":5,"max":10,"target":10,"days":4, "split":80,
+                         "tip":"Most popular firm. Strict consistency rule. No trading during major news.",
+                         "pass_tips":["Trade minimum 4 days","Never lose more than 5% in one day","Never exceed 10% total drawdown","Hit 10% profit target","Use 0.5-1% risk per trade only","Avoid FOMC, NFP and CPI news events","Take TP1 always — don't be greedy"]},
+        "The5ers":      {"e":"🌍","c":"#d97706","daily":4,"max":5, "target":8, "days":0, "split":100,
+                         "tip":"100% profit split on first target! Very tight 5% max loss. Scales to $4M.",
+                         "pass_tips":["No minimum trading days","VERY tight 5% max loss — use 0.25% risk","Hit 8% target slowly and consistently","Best for patient disciplined traders","Scale plan is incredible — work towards it"]},
+        "FundedNext":   {"e":"⚡","c":"#7c3aed","daily":5,"max":10,"target":10,"days":5, "split":90,
+                         "tip":"90% profit split. Stellar accounts available. Bi-weekly payouts.",
+                         "pass_tips":["Trade minimum 5 days","5% daily loss limit — respect it","Hit 10% profit target","Keep consistency — no huge single day wins","Great split — worth the effort"]},
+        "MyForexFunds": {"e":"📊","c":"#0891b2","daily":5,"max":12,"target":8, "days":5, "split":85,
+                         "tip":"Rapid 1-phase option available. Good for beginners. 85% split.",
+                         "pass_tips":["Choose Rapid account for 1-phase only","8% target is lower than most firms","12% max loss gives more breathing room","Good first prop firm choice","Consistent daily trading preferred"]},
+        "Apex":         {"e":"🔺","c":"#ef4444","daily":3,"max":6, "target":6, "days":7, "split":90,
+                         "tip":"Futures-focused. No time limit. Very tight 3% daily loss. Fast payouts.",
+                         "pass_tips":["No time limit — take your time","VERY tight 3% daily — use micro lots","6% profit target is achievable slowly","Best for indices and futures traders","Payout every 14 days once funded"]},
+        "True Forex":   {"e":"💎","c":"#14b8a6","daily":5,"max":10,"target":10,"days":4, "split":80,
+                         "tip":"Weekly payouts. No minimum days on funded. Straightforward rules.",
+                         "pass_tips":["4 minimum days in challenge phase","Standard 5% daily / 10% max rules","Weekly payouts once funded — great cashflow","Good 2-phase evaluation process","80% split — fair for a reliable firm"]},
+        "E8 Funding":   {"e":"🎯","c":"#f59e0b","daily":5,"max":8, "target":8, "days":0, "split":80,
+                         "tip":"Tight 8% max loss. Scaling plan available. Good community.",
+                         "pass_tips":["8% max loss — tighter than most","Use Grade A signals only","Avoid overtrading — 1-2 setups per day","Scale up after passing for more capital","Good firm for systematic traders"]},
+        "Alpha Capital":{"e":"🅰️","c":"#8b5cf6","daily":5,"max":10,"target":10,"days":0, "split":80,
+                         "tip":"Straightforward rules. Weekend holding allowed. Good for swing traders.",
+                         "pass_tips":["No minimum trading days","Standard 5%/10% rules","Weekend holding allowed — good for swings","10% profit target — take your time","Consistent risk management is key"]},
+    }
+
+    PIP_VALUES={"EUR/USD":10,"GBP/USD":10,"USD/JPY":9,"AUD/USD":10,"USD/CHF":10,
+                "USD/CAD":10,"Gold (XAU/USD)":100,"Bitcoin":100,"NASDAQ":1,"S&P 500":1}
+
+    # Session state
+    for k,v in [("pf_firm","FTMO"),("pf_account",10000.0),("pf_profit",0.0),
+                ("pf_loss",0.0),("pf_days",0)]:
+        if k not in st.session_state: st.session_state[k]=v
+
+    # ── Firm + account selector ────────────────────────────
+    col1,col2=st.columns(2)
+    with col1:
+        firm_name=st.selectbox("🏦 Prop Firm",list(FIRMS_DATA.keys()))
+        st.session_state.pf_firm=firm_name
+    with col2:
+        size_opts=["$5,000","$10,000","$25,000","$50,000","$100,000","Custom"]
+        size_sel=st.selectbox("💼 Account Size",size_opts)
+        if size_sel=="Custom":
+            account=st.number_input("Amount ($)",min_value=1000.0,value=10000.0,step=1000.0)
+        else:
+            account=float(size_sel.replace("$","").replace(",",""))
+        st.session_state.pf_account=account
+
+    firm=FIRMS_DATA[firm_name]
+    dl=account*firm["daily"]/100
+    ml=account*firm["max"]/100
+    pt=account*firm["target"]/100
+
+    # Firm info banner
     st.markdown(f"""
-    <div class='metric-row'>
-      <div class='metric-card'><div class='metric-label'>Daily Limit</div><div class='metric-value' style='color:#f85149'>${dl:,.0f}</div></div>
-      <div class='metric-card'><div class='metric-label'>Max Loss</div><div class='metric-value' style='color:#f85149'>${ml:,.0f}</div></div>
-      <div class='metric-card'><div class='metric-label'>Target</div><div class='metric-value' style='color:#3fb950'>${pt:,.0f}</div></div>
-    </div>
-    <div class='metric-row'>
-      <div class='metric-card'><div class='metric-label'>Remaining Daily</div><div class='metric-value'>${rem_daily:,.0f}</div></div>
-      <div class='metric-card'><div class='metric-label'>Remaining Max</div><div class='metric-value'>${rem_max:,.0f}</div></div>
-      <div class='metric-card'><div class='metric-label'>Still Need</div><div class='metric-value' style='color:#ffd200'>${need:,.0f}</div></div>
+    <div style="background:#161b22;border-radius:14px;padding:16px;margin:10px 0;border-left:4px solid {firm['c']}">
+      <b style="color:{firm['c']};font-size:18px">{firm['e']} {firm_name}</b>
+      <p style="color:#8b949e;margin:6px 0;font-size:13px">{firm['tip']}</p>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
+        <span style="color:#f85149">📉 Daily Loss: {firm['daily']}% (${dl:,.0f})</span>
+        <span style="color:#f85149">🔻 Max Loss: {firm['max']}% (${ml:,.0f})</span>
+        <span style="color:#3fb950">🎯 Target: {firm['target']}% (${pt:,.0f})</span>
+        <span style="color:#ffd200">💰 Split: {firm['split']}%</span>
+        <span style="color:#58a6ff">📅 Min Days: {firm['days'] if firm['days']>0 else 'None'}</span>
+      </div>
     </div>""",unsafe_allow_html=True)
-    st.progress(min(used_pct,1.0))
-    if used_pct>=1: st.error("🚨 DAILY LIMIT REACHED — Stop trading today!")
-    elif used_pct>=0.7: st.warning(f"⚠️ {round(used_pct*100)}% of daily limit used")
-    else: st.success(f"✅ {round(used_pct*100)}% used — safe to trade")
-    safe_lot=max(0.01,round(rem_daily*0.01/20,2))
-    st.info(f"💰 Recommended lot size: **{safe_lot} lots**")
+
+    # ── Section tabs ───────────────────────────────────────
+    pf_section=st.selectbox("📂 Section",
+        ["📊 Dashboard","💰 Lot Calculator","🎯 Get Signal for Challenge",
+         "📋 How to Pass","🏆 Firm Comparison"],
+        label_visibility="hidden")
+    st.divider()
+
+    # ══ DASHBOARD ══
+    if "Dashboard" in pf_section:
+        col1,col2,col3=st.columns(3)
+        profit=col1.number_input("Current Profit ($)",min_value=0.0,value=st.session_state.pf_profit,step=10.0)
+        loss  =col2.number_input("Current Loss ($)",  min_value=0.0,value=st.session_state.pf_loss,  step=10.0)
+        days  =col3.number_input("Days Traded",       min_value=0,  value=st.session_state.pf_days,  step=1)
+        st.session_state.pf_profit=profit; st.session_state.pf_loss=loss; st.session_state.pf_days=days
+
+        rem_daily=max(0,dl-loss); rem_max=max(0,ml-loss)
+        profit_pct=profit/account*100; loss_pct=loss/account*100
+        progress_pct=min(100,profit/pt*100) if pt>0 else 0
+        daily_used_pct=loss/dl*100 if dl>0 else 0
+
+        # Status
+        if daily_used_pct>=100: st.error("🚨 DAILY LOSS LIMIT HIT — STOP TRADING TODAY!")
+        elif daily_used_pct>=70: st.warning(f"⚠️ {round(daily_used_pct)}% of daily limit used — be very careful")
+        elif profit_pct>=firm["target"]: st.success(f"🎉 PROFIT TARGET HIT! Check minimum days then request payout!")
+        else: st.success(f"✅ Safe to trade — {round(daily_used_pct)}% of daily limit used")
+
+        st.markdown(f"""
+        <div class="metric-row">
+          <div class="metric-card"><div class="metric-label">Balance</div><div class="metric-value">${account+profit-loss:,.0f}</div></div>
+          <div class="metric-card"><div class="metric-label">Profit</div><div class="metric-value" style="color:#3fb950">${profit:,.0f} ({profit_pct:.1f}%)</div></div>
+          <div class="metric-card"><div class="metric-label">Loss Used</div><div class="metric-value" style="color:#f85149">${loss:,.0f} ({loss_pct:.1f}%)</div></div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card"><div class="metric-label">Daily Remaining</div><div class="metric-value" style="color:{"#f85149" if rem_daily<dl*0.3 else "#3fb950"}">${rem_daily:,.0f}</div></div>
+          <div class="metric-card"><div class="metric-label">Max Remaining</div><div class="metric-value">${rem_max:,.0f}</div></div>
+          <div class="metric-card"><div class="metric-label">Still Need</div><div class="metric-value" style="color:#ffd200">${max(0,pt-profit):,.0f}</div></div>
+        </div>""",unsafe_allow_html=True)
+
+        st.caption("Profit Progress")
+        st.progress(min(progress_pct/100,1.0))
+        st.caption(f"${profit:,.2f} / ${pt:,.0f} target ({progress_pct:.1f}%)")
+        st.caption("Daily Loss Used")
+        st.progress(min(daily_used_pct/100,1.0))
+        st.caption(f"${loss:,.2f} / ${dl:,.0f} ({daily_used_pct:.1f}%)")
+
+        # Pass probability
+        pass_prob=50+min(30,progress_pct*0.3)-daily_used_pct*0.3-loss_pct*0.5
+        pass_prob=max(5,min(95,round(pass_prob)))
+        st.subheader(f"🎯 Pass Probability: {pass_prob}%")
+        st.progress(pass_prob/100)
+        if pass_prob>=70: st.success("Strong position — keep trading consistently!")
+        elif pass_prob>=40: st.warning("Moderate — reduce risk, focus on quality Grade A/B signals only")
+        else: st.error("High risk of failing — stop, reset mindset, trade very small lots")
+
+        est_payout=profit*firm["split"]/100
+        st.info(f"💰 If you pass and withdraw current profit: **${est_payout:,.2f}** ({firm['split']}% split)")
+
+    # ══ LOT CALCULATOR ══
+    elif "Lot" in pf_section:
+        st.subheader("💰 Smart Lot Calculator")
+        st.info(f"Calculates safe lot sizes within {firm_name} rules for every pair")
+
+        loss_now=st.session_state.pf_loss
+        rem_daily_now=max(0,dl-loss_now)
+
+        col1,col2=st.columns(2)
+        with col1:
+            risk_mode=st.radio("Risk Mode",[f"Conservative (0.5% = ${account*0.005:,.0f})",
+                                            f"Standard (1% = ${account*0.01:,.0f})",
+                                            f"Aggressive (2% = ${account*0.02:,.0f})"])
+            stop_pips=st.number_input("Your Stop Loss (pips)",min_value=1.0,value=20.0,step=5.0)
+        with col2:
+            risk_pct=0.5 if "0.5%" in risk_mode else 1.0 if "1%" in risk_mode else 2.0
+            risk_amt=min(account*risk_pct/100, rem_daily_now*0.25)
+            st.metric("Max Risk This Trade",f"${risk_amt:,.2f}")
+            st.metric("Daily Buffer Left",f"${rem_daily_now:,.2f}")
+            st.metric("Max Loss Per Trade",f"${account*0.01:,.2f} (1% hard limit)")
+
+        st.divider()
+        st.subheader("📊 Lot Sizes for Every Pair")
+        lot_rows=[]
+        for pname,pval in PIP_VALUES.items():
+            trade_risk=min(account*risk_pct/100,rem_daily_now*0.25)
+            lot=max(0.01,round(trade_risk/(stop_pips*pval/100),2))
+            loss_if_sl=round(lot*stop_pips*pval/100,2)
+            win_if_tp1=round(lot*stop_pips*pval/100*1.5,2)
+            lot_rows.append({"Pair":pname,"Lot Size":lot,
+                            f"Loss if SL (${stop_pips:.0f}p)":f"-${loss_if_sl}",
+                            "Win if TP1 (1.5R)":f"+${win_if_tp1}",
+                            "Safe?":"✅" if loss_if_sl<=dl*0.2 else "⚠️"})
+        st.dataframe(pd.DataFrame(lot_rows),use_container_width=True,hide_index=True)
+        st.caption(f"Based on {risk_pct}% risk · {stop_pips:.0f} pip SL · ${account:,.0f} account · {firm_name} rules")
+
+    # ══ GET SIGNAL ══
+    elif "Signal" in pf_section:
+        st.subheader("🎯 Prop Firm Signal — App Picks the Best Trade for You")
+        st.info("Only Grade A & B signals are shown. Lot size is calculated within your challenge rules.")
+        loss_now=st.session_state.pf_loss
+        rem_daily_now=max(0,dl-loss_now)
+
+        if rem_daily_now<=0:
+            st.error("🚨 Daily loss limit reached — no trades recommended today.")
+        else:
+            if st.button("🔍 Find Best Signal for My Challenge",type="primary",use_container_width=True):
+                with st.spinner("Scanning for Grade A/B signals..."):
+                    best=None
+                    for pname,sym in (ALL_PAIRS if premium else FREE_PAIRS).items():
+                        try:
+                            sig=analyse_pair(sym,pname)
+                            if sig and sig["direction"]!="WAIT" and sig.get("grade") in ["A","B"]:
+                                if best is None or sig["confidence"]>best["confidence"]: best=sig
+                        except: pass
+
+                if best:
+                    pval=PIP_VALUES.get(best["pair"],10)
+                    sl_dist=abs(best["entry"]-best["sl"])
+                    sl_pips=sl_dist/0.0001 if best["entry"]<10 else sl_dist/0.01 if best["entry"]<500 else sl_dist
+                    max_risk=min(rem_daily_now*0.25,account*0.01)
+                    lot=max(0.01,round(max_risk/(sl_pips*pval/100),2))
+                    dp=5 if best["entry"]<100 else 2
+                    pot_loss=round(lot*sl_pips*pval/100,2)
+                    pot_win =round(lot*sl_pips*pval/100*1.5,2)
+                    dir_color="#3fb950" if "BUY" in best["direction"] else "#f85149"
+                    grade_color={"A":"#3fb950","B":"#0072ff","C":"#ffd200"}.get(best["grade"],"#f85149")
+
+                    st.markdown(f"""
+                    <div style="background:{"#0a1a0a" if "BUY" in best["direction"] else "#1a0a0a"};
+                      border-radius:16px;padding:20px;border:2px solid {dir_color}40;margin:10px 0">
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <div>
+                          <span style="font-size:22px;font-weight:900;color:{dir_color}">
+                            {"📈 BUY" if "BUY" in best["direction"] else "📉 SELL"}
+                          </span>
+                          <span style="background:{grade_color};color:#000;padding:3px 12px;
+                            border-radius:6px;font-weight:900;margin-left:10px;font-size:14px">
+                            Grade {best["grade"]}
+                          </span>
+                        </div>
+                        <span style="font-size:32px;font-weight:900;color:#ffd200">{best["confidence"]}%</span>
+                      </div>
+                      <p style="font-size:22px;font-weight:900;color:#e6edf3;margin:6px 0">{best["pair"]}</p>
+                      <p style="font-size:13px;color:#8b949e;margin:4px 0">{best.get("mtf_agree","")}</p>
+
+                      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
+                        background:#0d1117;border-radius:10px;padding:12px;margin:12px 0">
+                        <div style="text-align:center"><div style="font-size:10px;color:#8b949e;font-weight:700">ENTRY</div>
+                          <div style="font-weight:800;font-size:13px">{round(best["entry"],dp)}</div></div>
+                        <div style="text-align:center"><div style="font-size:10px;color:#8b949e;font-weight:700">STOP</div>
+                          <div style="font-weight:800;font-size:13px;color:#f85149">{round(best["sl"],dp)}</div></div>
+                        <div style="text-align:center"><div style="font-size:10px;color:#8b949e;font-weight:700">TP1</div>
+                          <div style="font-weight:800;font-size:13px;color:#3fb950">{round(best["tp1"],dp)}</div></div>
+                        <div style="text-align:center"><div style="font-size:10px;color:#8b949e;font-weight:700">TP2</div>
+                          <div style="font-weight:800;font-size:13px;color:#3fb950">{round(best["tp2"],dp)}</div></div>
+                        <div style="text-align:center"><div style="font-size:10px;color:#8b949e;font-weight:700">TP3</div>
+                          <div style="font-weight:800;font-size:13px;color:#3fb950">{round(best["tp3"],dp)}</div></div>
+                      </div>
+
+                      <div style="background:#1a2040;border-radius:10px;padding:14px">
+                        <p style="color:#ffd200;font-weight:900;font-size:16px;margin:0 0 8px">
+                          💰 {firm_name} Safe Lot: <span style="font-size:22px">{lot} lots</span>
+                        </p>
+                        <p style="color:#8b949e;font-size:12px;margin:2px 0">
+                          Max risk: ${max_risk:,.2f} ({round(max_risk/account*100,2)}% of account)
+                        </p>
+                        <p style="color:#f85149;font-size:12px;margin:2px 0">
+                          If SL hit: -${pot_loss} ({round(pot_loss/dl*100,1)}% of daily limit)
+                        </p>
+                        <p style="color:#3fb950;font-size:12px;margin:2px 0">
+                          If TP1 hit: +${pot_win} | Daily buffer remaining: ${rem_daily_now:,.2f}
+                        </p>
+                      </div>
+                    </div>""",unsafe_allow_html=True)
+
+                    # Trading rules reminder
+                    st.markdown("""
+                    <div style="background:#161b22;border-radius:10px;padding:14px;margin-top:10px">
+                    <b>⚡ Prop Firm Trade Rules:</b><br>
+                    ✅ Take TP1 — secure profit, move SL to breakeven<br>
+                    ✅ Let TP2 run with trailing stop<br>
+                    ✅ Close trade before major news events<br>
+                    ❌ Never move your stop loss against you<br>
+                    ❌ Never add to a losing position<br>
+                    ❌ Max 2-3 trades per day on a challenge
+                    </div>""",unsafe_allow_html=True)
+                else:
+                    st.info("⏳ No Grade A/B signals right now. Check back in 15-30 minutes or try refreshing the Pulse tab.")
+
+    # ══ HOW TO PASS ══
+    elif "How to Pass" in pf_section:
+        st.markdown(f"## {firm['e']} How to Pass {firm_name}")
+        st.markdown(f"""
+        <div style="background:#161b22;border-radius:14px;padding:20px;border-left:5px solid {firm['c']};margin-bottom:16px">
+        <h3 style="color:{firm['c']};margin:0 0 12px">Step-by-Step Guide</h3>
+        {"".join([f"<p style='color:#e6edf3;font-size:14px;padding:6px 0;border-bottom:1px solid #21262d;margin:0'><b style='color:{firm["c"]}'>{i+1}.</b> {tip}</p>" for i,tip in enumerate(firm["pass_tips"])])}
+        </div>""",unsafe_allow_html=True)
+
+        st.subheader("❌ Common Reasons People FAIL")
+        fails=["Trading too large lots out of greed","Revenge trading after a loss — worst thing you can do",
+               "Trading during FOMC, NFP, CPI without a plan","Ignoring the daily loss limit",
+               "Taking too many trades — overtrading kills challenges","Trading Grade C and D signals",
+               "Moving stop loss wider when in a losing trade","Not tracking daily P&L carefully"]
+        for f in fails:
+            st.markdown(f"<p style='color:#f85149;font-size:14px;margin:4px 0'>❌ {f}</p>",unsafe_allow_html=True)
+
+        st.subheader("✅ Winning Formula")
+        wins=["Only take Grade A & B signals from the Sparro FX AI Pulse tab",
+              "Risk 0.5-1% per trade maximum — use the lot calculator above",
+              "Trade 1-2 setups per day only — quality beats quantity every time",
+              "Stop trading after 2 losses in one day — protect your buffer",
+              "Journal every trade and review performance weekly",
+              "Trade London open (08:00-11:00 UTC) for best liquidity",
+              "Always check the News tab before entering any trade",
+              "Take TP1 always to lock in profit, then let TP2 and TP3 run"]
+        for w in wins:
+            st.markdown(f"<p style='color:#3fb950;font-size:14px;margin:4px 0'>✅ {w}</p>",unsafe_allow_html=True)
+
+    # ══ COMPARISON ══
+    elif "Comparison" in pf_section:
+        st.subheader("🏆 All Prop Firms Compared")
+        rows=[]
+        for fn,fd in FIRMS_DATA.items():
+            rows.append({"Firm":f"{fd['e']} {fn}","Daily":f"{fd['daily']}%",
+                        "Max DD":f"{fd['max']}%","Target":f"{fd['target']}%",
+                        "Split":f"{fd['split']}%","Min Days":fd["days"] if fd["days"]>0 else "None"})
+        st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+        st.divider()
+        st.subheader("💡 Which Firm is Right for You?")
+        st.markdown("""
+        | Your Situation | Best Choice |
+        |---|---|
+        | First time prop trader | MyForexFunds Rapid (1-phase, easiest) |
+        | Want highest profit split | The5ers (100%) or FundedNext (90%) |
+        | Want to scale to $1M+ | The5ers scaling programme |
+        | Tight on time, no min days | The5ers or Alpha Capital |
+        | Futures/indices trader | Apex Trader Funding |
+        | Want weekly payouts | True Forex Funds |
+        | Most trusted / well known | FTMO |
+        | Good for beginners | MyForexFunds or E8 Funding |
+        """)
 
 # ════════════════════════════════════════════════════════════
 # PAGE: NEWS
