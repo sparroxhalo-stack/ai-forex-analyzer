@@ -178,7 +178,8 @@ def get_all_users():
 # ════════════════════════════════════════════════════════════
 DEFAULTS={"logged_in":False,"user_email":"","user_tier":"free","is_admin":False,
           "active_tab":"Pulse","trade_journal":[],"telegram_token":"",
-          "telegram_chat_id":"","ai_strategy":"","notification_threshold":75}
+          "telegram_chat_id":"","ai_strategy":"","notification_threshold":75,
+          "account_balance":1000.0,"risk_pct":1.0}
 for k,v in DEFAULTS.items():
     if k not in st.session_state: st.session_state[k]=v
 
@@ -701,6 +702,107 @@ st.markdown("<div class='content-area'>",unsafe_allow_html=True)
 # ════════════════════════════════════════════════════════════
 # PIPNEX-STYLE CHART FUNCTION
 # ════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════
+# ACCOUNT-BASED TRADE CALCULATOR
+# ════════════════════════════════════════════════════════════
+PIP_VALUES_GLOBAL = {
+    "EUR/USD":10,"GBP/USD":10,"USD/JPY":9,"AUD/USD":10,
+    "USD/CHF":10,"USD/CAD":10,"Gold (XAU/USD)":100,
+    "Bitcoin":100,"NASDAQ":1,"S&P 500":1
+}
+
+def show_trade_calculator(sig):
+    """Shows account-based position sizing under every signal"""
+    if sig is None or sig.get("direction")=="WAIT": return
+
+    entry = sig.get("entry", 0)
+    sl    = sig.get("sl", 0)
+    tp1   = sig.get("tp1", 0)
+    tp2   = sig.get("tp2", 0)
+    tp3   = sig.get("tp3", 0)
+    pair  = sig.get("pair","")
+    dp    = 5 if entry < 100 else 2
+
+    st.markdown("""
+    <div style='background:#0d1117;border-radius:10px;padding:14px;
+      margin-top:8px;border:1px solid #21262d'>
+    <b style='color:#ffd200'>💰 Position Calculator</b>
+    </div>""", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    balance  = col1.number_input("Account Balance ($)",
+                min_value=10.0, value=st.session_state.account_balance,
+                step=100.0, key=f"bal_{pair}_{entry}")
+    risk_pct = col2.number_input("Risk %",
+                min_value=0.1, max_value=5.0,
+                value=st.session_state.risk_pct,
+                step=0.1, key=f"risk_{pair}_{entry}")
+    pip_val  = col3.number_input("Pip Value ($)",
+                min_value=0.1, value=float(PIP_VALUES_GLOBAL.get(pair, 10)),
+                step=0.1, key=f"pip_{pair}_{entry}")
+
+    # Save to session state
+    st.session_state.account_balance = balance
+    st.session_state.risk_pct        = risk_pct
+
+    # Calculations
+    risk_amt  = balance * risk_pct / 100
+    sl_dist   = abs(entry - sl)
+    sl_pips   = sl_dist / 0.0001 if entry < 10 else sl_dist / 0.01 if entry < 500 else sl_dist
+    lot       = max(0.01, round(risk_amt / (sl_pips * pip_val / 100), 2)) if sl_pips > 0 else 0.01
+    loss_sl   = round(lot * sl_pips * pip_val / 100, 2)
+    win_tp1   = round(lot * abs(tp1 - entry) / (sl_dist if sl_dist > 0 else 1) * loss_sl, 2)
+    win_tp2   = round(lot * abs(tp2 - entry) / (sl_dist if sl_dist > 0 else 1) * loss_sl, 2)
+    win_tp3   = round(lot * abs(tp3 - entry) / (sl_dist if sl_dist > 0 else 1) * loss_sl, 2)
+    bal_after_loss = balance - loss_sl
+    bal_after_tp1  = balance + win_tp1
+
+    # Results
+    st.markdown(f"""
+    <div style='background:#0d1117;border-radius:10px;padding:14px;margin-top:8px'>
+      <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center'>
+        <div>
+          <div style='font-size:10px;color:#8b949e;font-weight:700'>LOT SIZE</div>
+          <div style='font-size:22px;font-weight:900;color:#ffd200'>{lot}</div>
+        </div>
+        <div>
+          <div style='font-size:10px;color:#8b949e;font-weight:700'>RISK AMOUNT</div>
+          <div style='font-size:22px;font-weight:900;color:#f85149'>-${loss_sl}</div>
+        </div>
+        <div>
+          <div style='font-size:10px;color:#8b949e;font-weight:700'>TP1 PROFIT</div>
+          <div style='font-size:22px;font-weight:900;color:#3fb950'>+${win_tp1}</div>
+        </div>
+        <div>
+          <div style='font-size:10px;color:#8b949e;font-weight:700'>TP3 PROFIT</div>
+          <div style='font-size:22px;font-weight:900;color:#3fb950'>+${win_tp3}</div>
+        </div>
+      </div>
+
+      <div style='margin-top:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px'>
+        <div style='background:#1a0a0a;border-radius:8px;padding:8px;text-align:center'>
+          <div style='color:#8b949e'>If SL hits</div>
+          <div style='color:#f85149;font-weight:700'>${bal_after_loss:,.2f}</div>
+        </div>
+        <div style='background:#0a1a0a;border-radius:8px;padding:8px;text-align:center'>
+          <div style='color:#8b949e'>If TP1 hits</div>
+          <div style='color:#3fb950;font-weight:700'>${bal_after_tp1:,.2f}</div>
+        </div>
+        <div style='background:#0a1a0a;border-radius:8px;padding:8px;text-align:center'>
+          <div style='color:#8b949e'>If TP2 hits</div>
+          <div style='color:#3fb950;font-weight:700'>${balance+win_tp2:,.2f}</div>
+        </div>
+      </div>
+
+      <div style='margin-top:10px;font-size:11px;color:#8b949e'>
+        📍 Entry: <b style='color:#e6edf3'>{round(entry,dp)}</b> &nbsp;|&nbsp;
+        🛑 SL: <b style='color:#f85149'>{round(sl,dp)}</b> ({round(sl_dist,dp)} = {round(sl_pips,1)} pips) &nbsp;|&nbsp;
+        ✅ TP1: <b style='color:#3fb950'>{round(tp1,dp)}</b> &nbsp;|&nbsp;
+        ✅ TP2: <b style='color:#3fb950'>{round(tp2,dp)}</b> &nbsp;|&nbsp;
+        ✅ TP3: <b style='color:#3fb950'>{round(tp3,dp)}</b>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
 def show_pipnex_chart(symbol, pair_name, sig):
     """
     Shows a Pipnex-style chart with:
