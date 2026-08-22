@@ -280,6 +280,92 @@ def time_ago(dt):
     if secs<86400: return f"{secs//3600}h ago"
     return f"{secs//86400}d ago"
 
+def get_market_status():
+    """
+    Returns market open/closed status for each session.
+    Forex market is open 24/5 — closed Saturday and Sunday.
+    Each pair has specific best trading hours.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    weekday = now.weekday()  # 0=Monday, 6=Sunday
+    hour = now.hour
+    minute = now.minute
+    time_decimal = hour + minute/60
+
+    # Forex closed on weekends
+    if weekday == 5:  # Saturday
+        return {"open": False, "session": "Weekend", "reason": "Forex market closed — reopens Sunday 22:00 UTC", "color": "#f85149"}
+    if weekday == 6 and time_decimal < 22:  # Sunday before 22:00
+        opens_in = round((22 - time_decimal) * 60)
+        return {"open": False, "session": "Weekend", "reason": f"Forex market closed — opens in {opens_in} minutes", "color": "#f85149"}
+
+    # Sessions
+    if 22 <= time_decimal or time_decimal < 7:
+        session = "Asian Session 🌏"
+        color = "#ffd200"
+        note = "Lower volatility — best for JPY, AUD, NZD pairs"
+        quality = "⚠️ Low liquidity"
+    elif 7 <= time_decimal < 12:
+        session = "London Session 🇬🇧"
+        color = "#3fb950"
+        note = "Best session — highest liquidity and volatility"
+        quality = "✅ Best time to trade"
+    elif 12 <= time_decimal < 17:
+        session = "London + New York Overlap 🔥"
+        color = "#3fb950"
+        note = "PEAK session — highest volume of the day"
+        quality = "✅ Prime trading time"
+    elif 17 <= time_decimal < 22:
+        session = "New York Session 🗽"
+        color = "#0072ff"
+        note = "Good session — USD pairs most active"
+        quality = "✅ Good time to trade"
+    else:
+        session = "Off Hours"
+        color = "#8b949e"
+        note = "Low activity"
+        quality = "⚠️ Low liquidity"
+
+    return {
+        "open": True,
+        "session": session,
+        "color": color,
+        "note": note,
+        "quality": quality,
+        "reason": note,
+        "hour": hour,
+        "weekday": weekday,
+    }
+
+def is_pair_active(pair_name):
+    """Check if a specific pair is in its best trading hours"""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    hour = now.hour
+    weekday = now.weekday()
+
+    if weekday >= 5: return False  # Weekend
+
+    # Pair-specific best hours (UTC)
+    pair_hours = {
+        "EUR/USD":        (7, 20),   # London + NY
+        "GBP/USD":        (7, 20),   # London + NY
+        "USD/JPY":        (0, 9),    # Asian + London open
+        "AUD/USD":        (22, 9),   # Asian session (wraps midnight)
+        "USD/CHF":        (7, 20),   # London + NY
+        "USD/CAD":        (12, 20),  # NY session
+        "Gold (XAU/USD)": (7, 21),   # London + NY
+        "Bitcoin":        (0, 24),   # 24/7
+        "NASDAQ":         (13, 21),  # NY only
+        "S&P 500":        (13, 21),  # NY only
+    }
+
+    if pair_name not in pair_hours: return True
+    start, end = pair_hours[pair_name]
+
+    if start > end:  # Wraps midnight (e.g. 22-9)
+        return hour >= start or hour < end
+    return start <= hour < end
+
 @st.cache_data(ttl=900, show_spinner=False)
 def analyse_pair(symbol,pair_name):
     """
@@ -594,6 +680,8 @@ def render_signal_card(sig):
     grade_class=f"grade-{grade.lower()}"
     dir_emoji="📉" if d=="sell" else "📈"
     pair_emoji="🥇" if "Gold" in sig["pair"] else "₿" if "Bitcoin" in sig["pair"] else "€" if "EUR" in sig["pair"] else "£" if "GBP" in sig["pair"] else "💹"
+    pair_active = is_pair_active(sig["pair"])
+    active_badge = "" if pair_active else "⏸️ Off-hours · "
 
     # Filter checks
     filters=[
@@ -623,7 +711,7 @@ def render_signal_card(sig):
         <div class='confidence-pct'>{sig["confidence"]}%</div>
       </div>
 
-      <div class='pair-name'>{sig["pair"]}</div>
+      <div class='pair-name'>{sig["pair"]} <span style='font-size:12px;color:#8b949e;font-weight:400'>{active_badge}{"🟢 Active hours" if pair_active else ""}</span></div>
       <div class='mtf-line'>MTF: {sig.get("mtf_agree","—")}</div>
       <div class='market-condition'>📊 {sig.get("market_cond","—")}</div>
       <div style='background:#1a2040;border-radius:6px;padding:6px 10px;margin:4px 0;font-size:11px'>
@@ -1174,16 +1262,31 @@ elif "Pulse" in page:
         ⚠️ *Trading involves significant risk of loss. Past performance does not guarantee future results.*
         """)
 
-    st.markdown(f"""
-    <div style='background:#161b22;border-radius:12px;padding:14px;margin-bottom:12px'>
-      <div style='display:flex;align-items:center;gap:8px;margin-bottom:4px'>
-        <span class='live-dot'></span>
-        <b style='font-size:16px'>Live Pulse Signal</b>
-      </div>
-      <p style='color:#8b949e;font-size:12px;margin:0'>Quality-filtered signals. Candle quality · ATR filter · Weekly trend · Session timing · MTF confirmation. Grade A/B signals aim for 70%+ win rate.</p>
-      <p style='color:#8b949e;font-size:11px;margin:6px 0 0'>Scan: {now}</p>
-    </div>
-    """,unsafe_allow_html=True)
+    # Market status check
+    mkt = get_market_status()
+    if not mkt["open"]:
+        st.markdown(f"""
+        <div style='background:#1a0a0a;border:2px solid #f85149;border-radius:12px;
+          padding:14px;margin-bottom:12px;text-align:center'>
+          <b style='color:#f85149;font-size:16px'>🔴 Market Closed — {mkt["session"]}</b><br>
+          <span style='color:#8b949e;font-size:12px'>{mkt["reason"]}</span><br>
+          <span style='color:#8b949e;font-size:11px'>Signals below are based on last closed candles — do NOT enter trades now</span>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style='background:#161b22;border-radius:12px;padding:14px;margin-bottom:12px;
+          border-left:3px solid {mkt["color"]}'>
+          <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:4px'>
+            <div style='display:flex;align-items:center;gap:8px'>
+              <span class='live-dot'></span>
+              <b style='font-size:16px'>Live Pulse Signal</b>
+            </div>
+            <span style='background:{mkt["color"]}22;color:{mkt["color"]};padding:3px 10px;
+              border-radius:8px;font-size:12px;font-weight:700'>{mkt["quality"]} · {mkt["session"]}</span>
+          </div>
+          <p style='color:#8b949e;font-size:12px;margin:0'>{mkt["note"]}</p>
+          <p style='color:#8b949e;font-size:11px;margin:4px 0 0'>Scan: {now}</p>
+        </div>""", unsafe_allow_html=True)
 
     if not premium:
         st.warning("🔒 Free plan shows 5 assets. Upgrade for all 10 + Grade A/B system.")
