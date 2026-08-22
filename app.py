@@ -1382,7 +1382,6 @@ elif "Trade of Day" in page:
     if best:
         st.markdown(f"<p style='color:#8b949e'>Best setup across all {len(ALL_PAIRS)} assets right now:</p>",unsafe_allow_html=True)
         render_signal_card(best)
-        show_pipnex_chart(best["sym"], best["pair"], best)
         col1,col2=st.columns(2)
         if col1.button("🔔 Send to Telegram",use_container_width=True):
             token=st.session_state.telegram_token; chat_id=st.session_state.telegram_chat_id
@@ -1872,7 +1871,7 @@ elif "News" in page:
                     r=requests.post(
                         "https://api.groq.com/openai/v1/chat/completions",
                         headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
-                        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":f"You are a forex news analyst. Analyse this week calendar impact on {selected}. Give: 1) Bias 2) Key events 3) Times to avoid. Be concise. Calendar: {news_df.to_string(index=False)[:500]}"}],"max_tokens":600,"temperature":0.5},timeout=30)
+                        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":f"You are a forex news analyst. Analyse this week economic calendar impact on {selected}. Give: 1) Bullish or bearish bias 2) Key events to watch 3) Times to avoid trading. Be concise with bullet points."}],"max_tokens":600,"temperature":0.5},timeout=30)
                     if r.status_code==200:
                         analysis=r.json()["choices"][0]["message"]["content"]
                         st.markdown(f"<div class='news-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
