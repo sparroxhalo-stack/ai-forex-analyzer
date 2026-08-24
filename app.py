@@ -149,11 +149,25 @@ def get_user(email):
 
 def create_user(email,password,tier="free"):
     try:
-        r=requests.post(sb_url("users"),headers=get_headers(),
-            json={"email":email,"password_hash":hash_pw(password),"tier":tier,
-                  "is_active":True,"created_at":datetime.datetime.now().isoformat()},timeout=8)
-        return r.status_code in [200,201], r.text
-    except Exception as e: return False,str(e)
+        payload={
+            "email":      email.lower().strip(),
+            "password_hash": hash_pw(password),
+            "tier":       tier,
+            "is_active":  True,
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        }
+        r=requests.post(sb_url("users"),headers=get_headers(),json=payload,timeout=10)
+        if r.status_code in [200,201]:
+            return True, "ok"
+        # Try to get readable error
+        try:
+            err_json=r.json()
+            msg=err_json.get("message","") or err_json.get("hint","") or str(err_json)
+        except:
+            msg=r.text
+        return False, msg
+    except Exception as e:
+        return False, str(e)
 
 def update_tier(email,tier):
     try:
@@ -217,14 +231,38 @@ def show_login():
         rp=st.text_input("Password",type="password",placeholder="Min 6 characters",key="re_p")
         rp2=st.text_input("Confirm Password",type="password",placeholder="Repeat password",key="re_p2")
         if st.button("Create Account",type="primary",use_container_width=True):
-            if not re or not rp: st.error("Fill all fields.")
-            elif rp!=rp2: st.error("❌ Passwords don't match.")
-            elif len(rp)<6: st.error("❌ Min 6 characters.")
-            elif get_user(re): st.error("❌ Email already registered.")
+            if not re or not rp:
+                st.error("❌ Fill all fields.")
+            elif "@" not in re or "." not in re:
+                st.error("❌ Enter a valid email address.")
+            elif rp!=rp2:
+                st.error("❌ Passwords don't match.")
+            elif len(rp)<6:
+                st.error("❌ Password must be at least 6 characters.")
             else:
-                ok,err=create_user(re,rp,"free")
-                if ok: st.success("✅ Account created! Please login.")
-                else: st.error(f"❌ Failed: {err}")
+                # Check if already registered
+                existing=get_user(re)
+                if existing:
+                    st.error("❌ Email already registered. Please login instead.")
+                else:
+                    with st.spinner("Creating account..."):
+                        ok,err=create_user(re,rp,"free")
+                    if ok:
+                        st.success("✅ Account created successfully! Go to Login tab.")
+                        st.balloons()
+                    else:
+                        # Parse Supabase error
+                        err_str=str(err)
+                        if "duplicate" in err_str.lower() or "unique" in err_str.lower():
+                            st.error("❌ Email already registered.")
+                        elif "violates" in err_str.lower() or "policy" in err_str.lower():
+                            st.error("❌ Registration blocked by database policy. Contact admin.")
+                            st.caption("Admin: Enable INSERT policy on users table in Supabase dashboard.")
+                        elif "connection" in err_str.lower() or "timeout" in err_str.lower():
+                            st.error("❌ Connection failed. Check your internet and try again.")
+                        else:
+                            st.error(f"❌ Registration failed: {err_str[:200]}")
+                            st.caption("If this keeps happening, contact the admin to create your account manually.")
 
 if not st.session_state.logged_in:
     show_login(); st.stop()
@@ -1110,37 +1148,43 @@ def show_pipnex_chart(symbol, pair_name, sig):
     fig.update_layout(
         title=dict(
             text=f"{grade_emoji} {sig.get('direction','')} {pair_name} — Grade {sig.get('grade','')} {sig.get('confidence','')}% | {label}",
-            font=dict(color=dir_color, size=14),
+            font=dict(color=dir_color, size=13),
         ),
         plot_bgcolor="#131722",
-        paper_bgcolor="#0a0a0f",
-        font=dict(color="#d1d4dc", size=11),
+        paper_bgcolor="#131722",
+        font=dict(color="#d1d4dc", size=10),
         xaxis=dict(
             gridcolor="#1e222d", rangeslider_visible=False,
             showgrid=True, gridwidth=1,
-            type="category",
-            nticks=8,
+            type="category", nticks=6,
+            showticklabels=True,
         ),
-        xaxis2=dict(gridcolor="#1e222d", showgrid=True),
-        yaxis=dict(gridcolor="#1e222d", showgrid=True, side="right"),
+        xaxis2=dict(gridcolor="#1e222d", showgrid=True, nticks=4),
+        yaxis=dict(gridcolor="#1e222d", showgrid=True, side="right",
+            showticklabels=True),
         yaxis2=dict(gridcolor="#1e222d", showgrid=True, side="right"),
-        height=550,
-        margin=dict(l=10, r=120, t=50, b=10),
+        height=480,
+        margin=dict(l=0, r=80, t=40, b=20),
         legend=dict(
-            bgcolor="#161b22", bordercolor="#2a2e39",
-            borderwidth=1, x=0, y=1,
-            font=dict(size=10)
+            bgcolor="#131722", bordercolor="#2a2e39",
+            borderwidth=1, x=0, y=1.0,
+            font=dict(size=9), orientation="h"
         ),
         hovermode="x unified",
+        showlegend=True,
     )
-    fig.update_xaxes(showspikes=True, spikecolor="#434651", spikethickness=1)
-    fig.update_yaxes(showspikes=True, spikecolor="#434651", spikethickness=1)
 
-    st.plotly_chart(fig, use_container_width=True, config={
-        "displayModeBar": True,
-        "modeBarButtonsToRemove": ["autoScale2d","lasso2d","select2d"],
-        "scrollZoom": True,
-    })
+    try:
+        st.plotly_chart(fig, use_container_width=True, config={
+            "displayModeBar": False,
+            "scrollZoom": True,
+            "responsive": True,
+        })
+    except Exception as e:
+        st.error(f"Chart error: {e}")
+        # Fallback: show price table
+        st.dataframe(df[["Open","High","Low","Close"]].tail(20).round(5),
+            use_container_width=True)
 
     # ── AI Analysis tab (like Pipnex) ─────────────────────
     chart_tab1, chart_tab2 = st.tabs(["📊 Chart Analysis", "🤖 AI Analysis"])
@@ -1195,7 +1239,7 @@ Be direct and confident."""
                         r = requests.post(
                             "https://api.groq.com/openai/v1/chat/completions",
                             headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
-                            json={"model":"llama-3.3-70b-versatile",
+                            json={"model":"llama3-70b-8192",
                                   "messages":[{"role":"user","content":prompt}],
                                   "max_tokens":250,"temperature":0.6},
                             timeout=20)
@@ -1209,9 +1253,18 @@ Be direct and confident."""
                             {analysis.replace(chr(10),"<br>")}
                             </div>""", unsafe_allow_html=True)
                         else:
-                            st.error(f"Error {r.status_code}")
+                            try:
+                                err_msg = r.json().get("error",{}).get("message","Unknown error")
+                            except:
+                                err_msg = r.text[:100]
+                            if r.status_code == 404:
+                                st.error("❌ AI model not found. Check GROQ_API_KEY in secrets.")
+                            elif r.status_code == 401:
+                                st.error("❌ Invalid Groq API key. Get a new one at console.groq.com")
+                            else:
+                                st.error(f"❌ Groq error {r.status_code}: {err_msg}")
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error(f"❌ Connection error: {e}")
 
 # ════════════════════════════════════════════════════════════
 # PAGE: ADMIN
@@ -1974,7 +2027,7 @@ elif "News" in page:
                     r=requests.post(
                         "https://api.groq.com/openai/v1/chat/completions",
                         headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
-                        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":f"You are a forex news analyst. Analyse this week economic calendar impact on {selected}. Give: 1) Bullish or bearish bias 2) Key events to watch 3) Times to avoid trading. Be concise with bullet points."}],"max_tokens":600,"temperature":0.5},timeout=30)
+                        json={"model":"llama3-70b-8192","messages":[{"role":"user","content":f"You are a forex news analyst. Analyse this week economic calendar impact on {selected}. Give: 1) Bullish or bearish bias 2) Key events to watch 3) Times to avoid trading. Be concise with bullet points."}],"max_tokens":600,"temperature":0.5},timeout=30)
                     if r.status_code==200:
                         analysis=r.json()["choices"][0]["message"]["content"]
                         st.markdown(f"<div class='news-card'>{analysis.replace(chr(10),'<br>')}</div>",unsafe_allow_html=True)
@@ -2077,7 +2130,7 @@ Be direct and practical. No fluff."""
                     r=requests.post(
                         "https://api.groq.com/openai/v1/chat/completions",
                         headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
-                        json={"model":"llama-3.3-70b-versatile",
+                        json={"model":"llama3-70b-8192",
                               "messages":[{"role":"user","content":prompt}],
                               "max_tokens":500,"temperature":0.6},
                         timeout=30)
