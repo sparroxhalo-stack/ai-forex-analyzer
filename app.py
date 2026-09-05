@@ -141,6 +141,103 @@ def get_headers():
 def sb_url(path): return f"{st.secrets.get('SUPABASE_URL','')}/rest/v1/{path}"
 def hash_pw(p): return hashlib.sha256(p.encode()).hexdigest()
 
+# ── Trade Journal — Supabase persistent storage ──────────
+def save_trade(email, trade):
+    """Save a trade to Supabase trades table"""
+    try:
+        payload = {
+            "user_email":  email,
+            "date":        trade.get("date",  str(datetime.date.today())),
+            "pair":        trade.get("pair",  ""),
+            "direction":   trade.get("direction", ""),
+            "grade":       trade.get("grade", ""),
+            "confidence":  trade.get("confidence", 0),
+            "entry":       trade.get("entry", 0),
+            "sl":          trade.get("sl", 0),
+            "tp1":         trade.get("tp1", 0),
+            "tp2":         trade.get("tp2", 0),
+            "tp3":         trade.get("tp3", 0),
+            "lot_size":    trade.get("lot_size", 0),
+            "risk_amount": trade.get("risk_amount", 0),
+            "result":      trade.get("result", "Open"),
+            "pnl":         trade.get("pnl", 0),
+            "notes":       trade.get("notes", ""),
+            "remark":      trade.get("remark", ""),
+            "created_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        r = requests.post(sb_url("trades"), headers=get_headers(), json=payload, timeout=8)
+        return r.status_code in [200, 201], r.text
+    except Exception as e:
+        return False, str(e)
+
+def get_trades(email):
+    """Get all trades for a user from Supabase"""
+    try:
+        r = requests.get(
+            sb_url("trades") + f"?user_email=eq.{email}&order=created_at.desc",
+            headers=get_headers(), timeout=8)
+        if r.status_code == 200:
+            return r.json()
+        return []
+    except:
+        return []
+
+def update_trade(trade_id, updates):
+    """Update a trade result in Supabase"""
+    try:
+        r = requests.patch(
+            sb_url("trades") + f"?id=eq.{trade_id}",
+            headers=get_headers(), json=updates, timeout=8)
+        return r.status_code in [200, 204]
+    except:
+        return False
+
+def delete_trade(trade_id):
+    """Delete a trade from Supabase"""
+    try:
+        r = requests.delete(
+            sb_url("trades") + f"?id=eq.{trade_id}",
+            headers=get_headers(), timeout=8)
+        return r.status_code in [200, 204]
+    except:
+        return False
+
+def get_ai_remark(trade):
+    """Generate AI remark for a closed trade"""
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    if not api_key: return ""
+    result = trade.get("result","Unknown")
+    pnl    = trade.get("pnl", 0)
+    prompt = f"""You are a professional forex trading coach giving feedback on a closed trade.
+
+Trade Details:
+- Pair: {trade.get("pair","")} | Direction: {trade.get("direction","")}
+- Grade: {trade.get("grade","")} | Confidence: {trade.get("confidence","")}%
+- Entry: {trade.get("entry","")} | SL: {trade.get("sl","")} | TP1: {trade.get("tp1","")}
+- Lot Size: {trade.get("lot_size","")} | Risk: ${trade.get("risk_amount","")}
+- Result: {result} | P&L: ${pnl}
+- Notes: {trade.get("notes","None")}
+
+Give SHORT constructive feedback (max 80 words):
+1. Was this a good trade to take? (Grade {trade.get("grade","")} signal)
+2. What went {"right" if pnl > 0 else "wrong"}?
+3. One key lesson from this trade
+4. What to do differently next time (if anything)
+
+Be direct, honest and encouraging. No fluff."""
+
+    try:
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+            headers={"Content-Type":"application/json"},
+            json={"contents":[{"parts":[{"text":prompt}]}],
+                  "generationConfig":{"maxOutputTokens":150,"temperature":0.7}},
+            timeout=20)
+        if r.status_code == 200:
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except: pass
+    return ""
+
 def get_user(email):
     try:
         r=requests.get(sb_url(f"users?email=eq.{email}&select=*"),headers=get_headers(),timeout=8)
@@ -275,6 +372,20 @@ ALL_PAIRS={"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","USD/JPY":"USDJPY=X",
            "Gold (XAU/USD)":"GC=F","Bitcoin":"BTC-USD","NASDAQ":"^IXIC","S&P 500":"^GSPC"}
 FREE_PAIRS=dict(list(ALL_PAIRS.items())[:5])
 SPECIALIST={"Gold (XAU/USD)":1.15,"Bitcoin":1.10,"EUR/USD":1.08,"GBP/USD":1.05}
+
+# Pair personalities & custom strategy weights
+PAIR_PROFILES={
+    "EUR/USD":        {"character":"Smooth & predictable — best for trend following","sessions":"London + NY overlap (12:00-17:00 UTC)","best_for":"EMA trends, MACD crossovers","avoid":"Scalping during Asian session","emoji":"📈","weights":{"ema":1.4,"rsi":1.0,"macd":1.3,"bb":0.8,"sr":1.0,"bos":0.9}},
+    "GBP/USD":        {"character":"Volatile & aggressive — loves big moves and fake outs","sessions":"London open (07:00-10:00 UTC)","best_for":"SMC — BOS, Order Blocks","avoid":"Trading around news events","emoji":"⚡","weights":{"ema":0.9,"rsi":0.8,"macd":1.0,"bb":1.2,"sr":1.3,"bos":1.5}},
+    "USD/JPY":        {"character":"Range-bound — respects S/R levels perfectly","sessions":"Asian + London open (00:00-10:00 UTC)","best_for":"Support/Resistance levels, RSI divergence","avoid":"Trending strategies","emoji":"🎯","weights":{"ema":0.9,"rsi":1.4,"macd":0.9,"bb":1.1,"sr":1.5,"bos":1.0}},
+    "AUD/USD":        {"character":"Slow mover — follows commodities and risk sentiment","sessions":"Asian session (22:00-08:00 UTC)","best_for":"RSI + EMA combination","avoid":"Short-term scalping","emoji":"🦘","weights":{"ema":1.2,"rsi":1.3,"macd":1.0,"bb":1.0,"sr":1.1,"bos":0.8}},
+    "USD/CHF":        {"character":"Safe haven — inverse EUR/USD, moves with gold","sessions":"London + NY (08:00-20:00 UTC)","best_for":"EMA trend + Bollinger bands","avoid":"Trading when EUR/USD has no direction","emoji":"🏔️","weights":{"ema":1.2,"rsi":1.0,"macd":1.1,"bb":1.3,"sr":1.0,"bos":0.9}},
+    "USD/CAD":        {"character":"Oil-driven — follows crude oil price movements","sessions":"New York session (13:00-20:00 UTC)","best_for":"MACD + EMA during NY session only","avoid":"Trading outside NY session","emoji":"🛢️","weights":{"ema":1.1,"rsi":1.0,"macd":1.4,"bb":1.0,"sr":1.1,"bos":0.9}},
+    "Gold (XAU/USD)": {"character":"Strong trending — responds powerfully to news","sessions":"London + NY open (08:00-17:00 UTC)","best_for":"EMA Stack + BOS + Order Blocks","avoid":"Counter-trend trading","emoji":"🥇","weights":{"ema":1.5,"rsi":1.0,"macd":1.2,"bb":1.0,"sr":1.2,"bos":1.4}},
+    "Bitcoin":        {"character":"24/7 momentum monster — follows market sentiment","sessions":"NY open + Asian (00:00-08:00, 13:00-21:00 UTC)","best_for":"Bollinger breakouts + MACD momentum","avoid":"S/R levels — Bitcoin breaks them often","emoji":"₿","weights":{"ema":1.0,"rsi":1.1,"macd":1.4,"bb":1.5,"sr":0.7,"bos":1.2}},
+    "NASDAQ":         {"character":"Tech-driven — strong trends during NY session only","sessions":"NY session ONLY (13:30-20:00 UTC)","best_for":"EMA stack + MACD during NY session","avoid":"Outside NY session","emoji":"💻","weights":{"ema":1.5,"rsi":0.9,"macd":1.4,"bb":1.1,"sr":1.0,"bos":0.9}},
+    "S&P 500":        {"character":"Steady climber — trends up long term, dips are bought","sessions":"NY session ONLY (13:30-20:00 UTC)","best_for":"EMA trend following — buy the dip","avoid":"Short selling unless strong confluence","emoji":"📊","weights":{"ema":1.5,"rsi":1.1,"macd":1.3,"bb":1.0,"sr":1.2,"bos":0.8}},
+}
 
 premium=st.session_state.user_tier in ["premium","admin"]
 is_admin=st.session_state.is_admin
