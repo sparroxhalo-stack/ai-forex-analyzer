@@ -394,20 +394,47 @@ pairs=ALL_PAIRS if premium else FREE_PAIRS
 # ════════════════════════════════════════════════════════════
 # DATA & STRATEGIES
 # ════════════════════════════════════════════════════════════
-@st.cache_data(ttl=900, show_spinner=False)
+# Twelve Data symbol mapping
+TD_SYMBOLS={"EURUSD=X":"EUR/USD","GBPUSD=X":"GBP/USD","USDJPY=X":"USD/JPY",
+            "AUDUSD=X":"AUD/USD","USDCHF=X":"USD/CHF","USDCAD=X":"USD/CAD",
+            "GC=F":"XAU/USD","BTC-USD":"BTC/USD","^IXIC":"NDX","^GSPC":"SPX"}
+TD_INTERVALS={"1m":"1min","5m":"5min","15m":"15min","30m":"30min",
+              "1h":"1h","1d":"1day","1wk":"1week","1mo":"1month"}
+
+@st.cache_data(ttl=300,show_spinner=False)
 def fetch(symbol,period="6mo",interval="1d"):
-    try:
-        import signal
-        df=yf.download(symbol,period=period,interval=interval,
-                       progress=False,auto_adjust=True,
-                       threads=False,timeout=15)
-        if df is None or df.empty: return None
-        if isinstance(df.columns,pd.MultiIndex): df.columns=df.columns.get_level_values(0)
-        # Ensure we have required columns
-        required=["Close","High","Low"]
-        if not all(c in df.columns for c in required): return None
-        return df
-    except Exception: return None
+    td_key=st.secrets.get("TWELVE_DATA_KEY","")
+    # Try Twelve Data first (real-time accurate data)
+    if td_key:
+        try:
+            size={"1d":100,"5d":100,"1mo":200,"3mo":400,"6mo":500,"1y":500,"2y":500}.get(period,300)
+            r=requests.get("https://api.twelvedata.com/time_series",
+                params={"symbol":TD_SYMBOLS.get(symbol,symbol),
+                        "interval":TD_INTERVALS.get(interval,"1day"),
+                        "outputsize":min(size,5000),
+                        "apikey":td_key,"format":"JSON","order":"ASC"},
+                timeout=15)
+            data=r.json()
+            if "values" in data and len(data["values"])>=10:
+                df=pd.DataFrame(data["values"])
+                df.index=pd.to_datetime(df["datetime"])
+                df=df.rename(columns={"open":"Open","high":"High","low":"Low","close":"Close","volume":"Volume"})
+                for col in ["Open","High","Low","Close"]:
+                    if col in df.columns: df[col]=pd.to_numeric(df[col],errors="coerce")
+                df=df.dropna(subset=["Close","High","Low"])
+                if len(df)>=10: return df
+        except: pass
+    # Fallback: Yahoo Finance
+    if YF_AVAILABLE:
+        try:
+            df=yf.download(symbol,period=period,interval=interval,
+                           progress=False,auto_adjust=True,threads=False,timeout=15)
+            if df is None or df.empty: return None
+            if isinstance(df.columns,pd.MultiIndex): df.columns=df.columns.get_level_values(0)
+            if not all(c in df.columns for c in ["Close","High","Low"]): return None
+            return df
+        except: return None
+    return None
 
 def get_rsi(close,period=14):
     d=close.diff(); g=d.where(d>0,0).rolling(period).mean(); l=(-d.where(d<0,0)).rolling(period).mean()
@@ -758,35 +785,51 @@ def analyse_pair(symbol,pair_name):
     if grade=="D" and direction!="WAIT":
         direction="WAIT"; final_sig="WAIT"
 
-    # ── TRADE LEVELS ─────────────────────────────────────
-    # SL = 1x ATR (tight but realistic)
-    # TP1 = 0.5x ATR (very achievable — close and take profit)
-    # TP2 = 1x ATR (standard R:R 1:1)
-    # TP3 = 2x ATR (let winners run)
-    sl_dist  = atr * 1.0   # tighter SL
-    tp1_dist = atr * 0.5   # TP1 very close — high hit rate
-    tp2_dist = atr * 1.0   # TP2 at 1:1
-    tp3_dist = atr * 2.0   # TP3 at 1:2 — stretch target
+    # ── TRADE LEVELS — Swing-based (more realistic) ──────
+    # SL = just below/above nearest swing low/high (not ATR)
+    # TP1 = 50% of distance to next swing (very achievable)
+    # TP2 = next swing high/low (natural target)
+    # TP3 = 2x swing distance (stretch)
 
-    if direction=="BUY":
-        entry=price
-        sl  =price - sl_dist
-        tp1 =price + tp1_dist
-        tp2 =price + tp2_dist
-        tp3 =price + tp3_dist
-    elif direction=="SELL":
-        entry=price
-        sl  =price + sl_dist
-        tp1 =price - tp1_dist
-        tp2 =price - tp2_dist
-        tp3 =price - tp3_dist
-    else:
-        entry=price; sl=0; tp1=0; tp2=0; tp3=0
+    # Find nearest swing points for smarter SL/TP
+    try:
+        if direction=="BUY":
+            # SL just below recent swing low
+            swing_low  = float(l_.iloc[-10:].min())
+            swing_high = float(h_.iloc[-20:].max())
+            sl_dist    = max(atr*0.8, price - swing_low)  # at least 0.8x ATR
+            tp_target  = swing_high - price  # distance to next resistance
+            sl   = price - sl_dist
+            tp1  = price + min(sl_dist*0.8, tp_target*0.4)   # 0.8:1 — very achievable
+            tp2  = price + min(sl_dist*1.5, tp_target*0.7)   # near swing high
+            tp3  = price + min(sl_dist*2.5, tp_target)        # at swing high
+        elif direction=="SELL":
+            swing_high = float(h_.iloc[-10:].max())
+            swing_low  = float(l_.iloc[-20:].min())
+            sl_dist    = max(atr*0.8, swing_high - price)
+            tp_target  = price - swing_low
+            sl   = price + sl_dist
+            tp1  = price - min(sl_dist*0.8, tp_target*0.4)
+            tp2  = price - min(sl_dist*1.5, tp_target*0.7)
+            tp3  = price - min(sl_dist*2.5, tp_target)
+        else:
+            sl=tp1=tp2=tp3=0; sl_dist=atr
+    except:
+        # Fallback to ATR-based if swing detection fails
+        sl_dist=atr*1.0
+        if direction=="BUY":
+            sl=price-sl_dist; tp1=price+sl_dist*0.8; tp2=price+sl_dist*1.5; tp3=price+sl_dist*2.5
+        elif direction=="SELL":
+            sl=price+sl_dist; tp1=price-sl_dist*0.8; tp2=price-sl_dist*1.5; tp3=price-sl_dist*2.5
+        else:
+            sl=tp1=tp2=tp3=0
 
-    # Entry validity check — warn if price has moved too far from entry
-    entry_valid = True
-    entry_drift_pct = 0
-    # (shown on signal card so user knows if entry is still valid)
+    entry=price
+
+    # Entry validity — how far has price moved from ideal entry
+    entry_valid    = True
+    entry_drift    = 0.0
+    # (shown on card)
 
     # ── MARKET CONDITION LABEL ────────────────────────────
     if atr_pct>1.0:   vol_label="High volatility"
@@ -864,9 +907,14 @@ def render_signal_card(sig):
       <div class='mtf-line'>MTF: {sig.get("mtf_agree","—")}</div>
       <div class='market-condition'>📊 {sig.get("market_cond","—")}</div>
       <div style='background:#1a2040;border-radius:6px;padding:6px 10px;margin:4px 0;font-size:11px'>
-        ⏰ Signal posted: <b>{sig.get("time_ago","just now")}</b> &nbsp;|&nbsp;
+        ⏰ <b>{sig.get("time_ago","just now")}</b> &nbsp;|&nbsp;
         📍 Entry: <b>{round(sig.get("entry",0), 5 if sig.get("entry",0)<100 else 2)}</b> &nbsp;|&nbsp;
-        🎯 TP1 distance: <b>{round(abs(sig.get("tp1",0)-sig.get("entry",0)), 5 if sig.get("entry",0)<100 else 2)}</b>
+        🎯 TP1: <b style="color:#3fb950">+{round(abs(sig.get("tp1",0)-sig.get("entry",0)), 5 if sig.get("entry",0)<100 else 2)}</b> &nbsp;|&nbsp;
+        🛑 SL: <b style="color:#f85149">-{round(abs(sig.get("sl",0)-sig.get("entry",0)), 5 if sig.get("entry",0)<100 else 2)}</b>
+      </div>
+      <div style='background:#0a1200;border-radius:6px;padding:6px 10px;margin:4px 0;font-size:11px;color:#3fb950'>
+        ⚠️ <b>Signal Strength ≠ Win Rate.</b> This shows how many indicators agree. Always use your SL.
+        TP1 is set at swing level — most achievable target.
       </div>
 
       <div class='price-grid'>
@@ -969,41 +1017,72 @@ def show_trade_calculator(sig):
     col1, col2, col3 = st.columns(3)
     balance  = col1.number_input("Account Balance ($)",
                 min_value=10.0, value=st.session_state.account_balance,
-                step=100.0, key=f"bal_{pair}_{entry}")
+                step=10.0, key=f"bal_{pair}_{entry}")
     risk_pct = col2.number_input("Risk %",
                 min_value=0.1, max_value=5.0,
                 value=st.session_state.risk_pct,
                 step=0.1, key=f"risk_{pair}_{entry}")
     pip_val  = col3.number_input("Pip Value ($)",
-                min_value=0.1, value=float(PIP_VALUES_GLOBAL.get(pair, 10)),
+                min_value=0.01, value=float(PIP_VALUES_GLOBAL.get(pair, 10)),
                 step=0.1, key=f"pip_{pair}_{entry}")
 
     # Save to session state
     st.session_state.account_balance = balance
     st.session_state.risk_pct        = risk_pct
 
+    # Detect account size category
+    is_small  = balance <= 200
+    is_medium = 200 < balance <= 1000
+    account_label = "🔴 Micro Account" if balance <= 100 else "🟡 Small Account" if balance <= 500 else "🟢 Standard Account"
+
     # Calculations
     risk_amt  = balance * risk_pct / 100
     sl_dist   = abs(entry - sl)
     sl_pips   = sl_dist / 0.0001 if entry < 10 else sl_dist / 0.01 if entry < 500 else sl_dist
-    lot       = max(0.01, round(risk_amt / (sl_pips * pip_val / 100), 2)) if sl_pips > 0 else 0.01
+    # Minimum lot is 0.01 — clamp to it
+    raw_lot   = risk_amt / (sl_pips * pip_val / 100) if sl_pips > 0 and pip_val > 0 else 0.01
+    lot       = max(0.01, round(raw_lot, 2))
     loss_sl   = round(lot * sl_pips * pip_val / 100, 2)
     win_tp1   = round(lot * abs(tp1 - entry) / (sl_dist if sl_dist > 0 else 1) * loss_sl, 2)
     win_tp2   = round(lot * abs(tp2 - entry) / (sl_dist if sl_dist > 0 else 1) * loss_sl, 2)
     win_tp3   = round(lot * abs(tp3 - entry) / (sl_dist if sl_dist > 0 else 1) * loss_sl, 2)
     bal_after_loss = balance - loss_sl
     bal_after_tp1  = balance + win_tp1
+    actual_risk_pct = loss_sl / balance * 100
 
-    # Results
+    # ── Small account warning ─────────────────────────────
+    if is_small:
+        if lot <= 0.01:
+            small_msg = f"✅ Use minimum lot (0.01) — risking ${loss_sl} ({actual_risk_pct:.1f}% of account)"
+        else:
+            small_msg = f"⚠️ Lot {lot} may be too large — risking ${loss_sl} ({actual_risk_pct:.1f}%)"
+
+        # Best pairs for small accounts
+        small_pairs = {"EUR/USD":"Low spread, predictable","USD/JPY":"Low spread, good movement",
+                      "Gold (XAU/USD)":"Big moves = good profit on 0.01 lot"}
+        pair_tip = small_pairs.get(pair, "Consider EUR/USD or USD/JPY for smaller accounts")
+
+        st.markdown(f"""
+        <div style='background:#1a1200;border-radius:10px;padding:12px;margin-top:8px;
+          border:1px solid #ffd20050'>
+          <b style='color:#ffd200'>{account_label}</b><br>
+          <span style='color:#8b949e;font-size:12px'>{small_msg}</span><br>
+          <span style='color:#8b949e;font-size:12px'>💡 {pair_tip}</span><br>
+          <span style='color:#8b949e;font-size:12px'>📌 Small account tip: Always use 0.01 lots · Take TP1 always · Never skip SL · Focus on EUR/USD & Gold</span>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Results ───────────────────────────────────────────
     st.markdown(f"""
     <div style='background:#0d1117;border-radius:10px;padding:14px;margin-top:8px'>
+      <div style='font-size:11px;color:#8b949e;margin-bottom:8px'>{account_label} · Risk: {actual_risk_pct:.1f}% of account</div>
       <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center'>
         <div>
           <div style='font-size:10px;color:#8b949e;font-weight:700'>LOT SIZE</div>
           <div style='font-size:22px;font-weight:900;color:#ffd200'>{lot}</div>
+          <div style='font-size:10px;color:#8b949e'>{"min lot" if lot==0.01 else ""}</div>
         </div>
         <div>
-          <div style='font-size:10px;color:#8b949e;font-weight:700'>RISK AMOUNT</div>
+          <div style='font-size:10px;color:#8b949e;font-weight:700'>RISK ($)</div>
           <div style='font-size:22px;font-weight:900;color:#f85149'>-${loss_sl}</div>
         </div>
         <div>
@@ -1033,10 +1112,9 @@ def show_trade_calculator(sig):
 
       <div style='margin-top:10px;font-size:11px;color:#8b949e'>
         📍 Entry: <b style='color:#e6edf3'>{round(entry,dp)}</b> &nbsp;|&nbsp;
-        🛑 SL: <b style='color:#f85149'>{round(sl,dp)}</b> ({round(sl_dist,dp)} = {round(sl_pips,1)} pips) &nbsp;|&nbsp;
+        🛑 SL: <b style='color:#f85149'>{round(sl,dp)}</b> ({round(sl_pips,1)} pips) &nbsp;|&nbsp;
         ✅ TP1: <b style='color:#3fb950'>{round(tp1,dp)}</b> &nbsp;|&nbsp;
-        ✅ TP2: <b style='color:#3fb950'>{round(tp2,dp)}</b> &nbsp;|&nbsp;
-        ✅ TP3: <b style='color:#3fb950'>{round(tp3,dp)}</b>
+        ✅ TP2: <b style='color:#3fb950'>{round(tp2,dp)}</b>
       </div>
     </div>""", unsafe_allow_html=True)
 
