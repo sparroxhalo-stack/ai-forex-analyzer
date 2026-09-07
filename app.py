@@ -404,37 +404,62 @@ TD_INTERVALS={"1m":"1min","5m":"5min","15m":"15min","30m":"30min",
 @st.cache_data(ttl=300,show_spinner=False)
 def fetch(symbol,period="6mo",interval="1d"):
     td_key=st.secrets.get("TWELVE_DATA_KEY","")
-    # Try Twelve Data first (real-time accurate data)
+    # Try Twelve Data first
     if td_key:
         try:
             size={"1d":100,"5d":100,"1mo":200,"3mo":400,"6mo":500,"1y":500,"2y":500}.get(period,300)
+            td_sym=TD_SYMBOLS.get(symbol,symbol)
+            td_int=TD_INTERVALS.get(interval,"1day")
             r=requests.get("https://api.twelvedata.com/time_series",
-                params={"symbol":TD_SYMBOLS.get(symbol,symbol),
-                        "interval":TD_INTERVALS.get(interval,"1day"),
+                params={"symbol":td_sym,"interval":td_int,
                         "outputsize":min(size,5000),
                         "apikey":td_key,"format":"JSON","order":"ASC"},
                 timeout=15)
             data=r.json()
-            if "values" in data and len(data["values"])>=10:
+            # Check for API errors
+            if data.get("status")=="error":
+                pass  # Fall through to Yahoo
+            elif "values" in data and len(data["values"])>=10:
                 df=pd.DataFrame(data["values"])
                 df.index=pd.to_datetime(df["datetime"])
-                df=df.rename(columns={"open":"Open","high":"High","low":"Low","close":"Close","volume":"Volume"})
+                df=df.rename(columns={"open":"Open","high":"High",
+                                      "low":"Low","close":"Close","volume":"Volume"})
                 for col in ["Open","High","Low","Close"]:
-                    if col in df.columns: df[col]=pd.to_numeric(df[col],errors="coerce")
+                    if col in df.columns:
+                        df[col]=pd.to_numeric(df[col],errors="coerce")
                 df=df.dropna(subset=["Close","High","Low"])
                 if len(df)>=10: return df
         except: pass
-    # Fallback: Yahoo Finance
+    # Fallback: Yahoo Finance (always works as backup)
     if YF_AVAILABLE:
         try:
             df=yf.download(symbol,period=period,interval=interval,
-                           progress=False,auto_adjust=True,threads=False,timeout=15)
+                           progress=False,auto_adjust=True,
+                           threads=False,timeout=15)
             if df is None or df.empty: return None
-            if isinstance(df.columns,pd.MultiIndex): df.columns=df.columns.get_level_values(0)
+            if isinstance(df.columns,pd.MultiIndex):
+                df.columns=df.columns.get_level_values(0)
             if not all(c in df.columns for c in ["Close","High","Low"]): return None
             return df
         except: return None
     return None
+
+def test_twelve_data():
+    """Test if Twelve Data is working — call from settings page"""
+    td_key=st.secrets.get("TWELVE_DATA_KEY","")
+    if not td_key: return False,"No TWELVE_DATA_KEY in secrets"
+    try:
+        r=requests.get("https://api.twelvedata.com/time_series",
+            params={"symbol":"EUR/USD","interval":"1day","outputsize":5,
+                    "apikey":td_key,"format":"JSON"},timeout=10)
+        data=r.json()
+        if data.get("status")=="error":
+            return False,data.get("message","Unknown error")
+        if "values" in data:
+            return True,f"✅ Connected — got {len(data['values'])} candles for EUR/USD"
+        return False,str(data)[:100]
+    except Exception as e:
+        return False,str(e)
 
 def get_rsi(close,period=14):
     d=close.diff(); g=d.where(d>0,0).rolling(period).mean(); l=(-d.where(d<0,0)).rolling(period).mean()
