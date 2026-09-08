@@ -895,17 +895,28 @@ def analyse_pair(symbol,pair_name):
     agree_count=3 if grade=="A" else 2 if grade=="B" else 1
 
     # ── TRADE LEVELS ─────────────────────────────────────
-    # Rules:
-    # SL  = 0.5x ATR  (tight — protects capital)
-    # TP1 = 1.0x ATR  (2:1 R/R — TP is ALWAYS bigger than SL)
-    # TP2 = 2.0x ATR  (4:1 R/R)
-    # TP3 = 3.0x ATR  (6:1 R/R)
-    # This ensures TP1 profit > SL loss every time
+    # SL  = 0.3x ATR  (very tight — just past recent swing)
+    # TP1 = 0.6x ATR  (2:1 R/R — very achievable)
+    # TP2 = 1.2x ATR  (4:1 R/R)
+    # TP3 = 2.0x ATR  (6:1 R/R — stretch target)
+    # Result: SL in pips is small, TP1 is always 2x the SL
 
-    sl_dist  = atr * 0.5   # SL is tight
-    tp1_dist = atr * 1.0   # TP1 = 2x SL (good R:R)
-    tp2_dist = atr * 2.0   # TP2 = 4x SL
-    tp3_dist = atr * 3.0   # TP3 = 6x SL
+    # Use recent candle structure for tighter SL
+    try:
+        last_high = float(h_.iloc[-3:].max())
+        last_low  = float(l_.iloc[-3:].min())
+        struct_sl_buy  = price - (price - last_low)   * 0.8   # just below recent low
+        struct_sl_sell = price + (last_high - price)  * 0.8   # just above recent high
+        # Use the smaller of structure SL and ATR SL
+        sl_dist = min(atr * 0.4, abs(price - struct_sl_buy) if direction=="BUY"
+                      else abs(price - struct_sl_sell))
+        sl_dist = max(sl_dist, atr * 0.2)  # never too tight
+    except:
+        sl_dist = atr * 0.3
+
+    tp1_dist = sl_dist * 2.0   # TP1 = 2:1
+    tp2_dist = sl_dist * 4.0   # TP2 = 4:1
+    tp3_dist = sl_dist * 6.0   # TP3 = 6:1
 
     entry = price
     if direction=="BUY":
@@ -946,7 +957,7 @@ def analyse_pair(symbol,pair_name):
         "weekly_ok":weekly_ok,"session_ok":session_ok,"mtf_ok":mtf_ok,
         "session_label":session_label,"strategies":strat_names,
         "agree":f"{agree_count}/8 agree","ob_name":ob_name,"fvg_name":fvg_name,"smc_bonus":smc_bonus,"rsi":round(rsi_val,1),
-        "adx":round(adx,1),"candle_name":candle_name,
+        "adx":0,"candle_name":candle_name,
         "buys":buys,"sells":sells,
         "scan_time":scan_time,
         "time_ago":time_ago(scan_time),
@@ -998,9 +1009,15 @@ def render_signal_card(sig):
       <div class='market-condition'>📊 {sig.get("market_cond","—")}</div>
       <div style='background:#1a2040;border-radius:6px;padding:6px 10px;margin:4px 0;font-size:11px'>
         ⏰ <b>{sig.get("time_ago","just now")}</b> &nbsp;|&nbsp;
-        📍 Entry: <b>{round(sig.get("entry",0), 5 if sig.get("entry",0)<100 else 2)}</b> &nbsp;|&nbsp;
-        🎯 TP1: <b style="color:#3fb950">+{round(abs(sig.get("tp1",0)-sig.get("entry",0)), 5 if sig.get("entry",0)<100 else 2)}</b> &nbsp;|&nbsp;
+        📍 Entry: <b>{round(sig.get("entry",0), 5 if sig.get("entry",0)<100 else 2)}</b><br>
         🛑 SL: <b style="color:#f85149">-{round(abs(sig.get("sl",0)-sig.get("entry",0)), 5 if sig.get("entry",0)<100 else 2)}</b>
+        ({round(abs(sig.get("sl",0)-sig.get("entry",0))/0.0001 if sig.get("entry",0)<10
+          else abs(sig.get("sl",0)-sig.get("entry",0))/0.01 if sig.get("entry",0)<500
+          else abs(sig.get("sl",0)-sig.get("entry",0)), 1)} pips) &nbsp;|&nbsp;
+        🎯 TP1: <b style="color:#3fb950">+{round(abs(sig.get("tp1",0)-sig.get("entry",0)), 5 if sig.get("entry",0)<100 else 2)}</b>
+        ({round(abs(sig.get("tp1",0)-sig.get("entry",0))/0.0001 if sig.get("entry",0)<10
+          else abs(sig.get("tp1",0)-sig.get("entry",0))/0.01 if sig.get("entry",0)<500
+          else abs(sig.get("tp1",0)-sig.get("entry",0)), 1)} pips)
       </div>
       <div style='background:#0a1200;border-radius:6px;padding:6px 10px;margin:4px 0;font-size:11px;color:#3fb950'>
         ⚠️ <b>Signal Strength ≠ Win Rate.</b> This shows how many indicators agree. Always use your SL.
