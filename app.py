@@ -431,18 +431,17 @@ def fetch(symbol,period="6mo",interval="1d"):
                 if len(df)>=10: return df
         except: pass
     # Fallback: Yahoo Finance (always works as backup)
-    if YF_AVAILABLE:
-        try:
-            df=yf.download(symbol,period=period,interval=interval,
-                           progress=False,auto_adjust=True,
-                           threads=False,timeout=15)
-            if df is None or df.empty: return None
-            if isinstance(df.columns,pd.MultiIndex):
-                df.columns=df.columns.get_level_values(0)
-            if not all(c in df.columns for c in ["Close","High","Low"]): return None
-            return df
-        except: return None
-    return None
+    try:
+        import yfinance as _yf
+        df=_yf.download(symbol,period=period,interval=interval,
+                       progress=False,auto_adjust=True,
+                       threads=False,timeout=15)
+        if df is None or df.empty: return None
+        if isinstance(df.columns,pd.MultiIndex):
+            df.columns=df.columns.get_level_values(0)
+        if not all(c in df.columns for c in ["Close","High","Low"]): return None
+        return df
+    except: return None
 
 def test_twelve_data():
     """Test if Twelve Data is working — call from settings page"""
