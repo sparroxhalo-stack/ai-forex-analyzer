@@ -671,107 +671,181 @@ def analyse_pair(symbol,pair_name):
     elif price<lookback_l: bos_sig="SELL"
     else:                  bos_sig="WAIT"
 
-    # ── STRATEGY 7: ORDER BLOCKS (SMC) ────────────────────
-    # Bullish OB: last bearish candle before a strong bullish move up
-    # Bearish OB: last bullish candle before a strong bearish move down
-    ob_sig="WAIT"; ob_level=0; ob_name=""
-    try:
-        opens=df_d["Open"].values if "Open" in df_d.columns else c.shift(1).values
-        closes=c.values; highs=h_.values; lows=l_.values
-        # Look back 30 bars for order blocks
-        for i in range(len(closes)-2, max(len(closes)-30,2), -1):
-            # Bullish OB: bearish candle followed by strong bullish move
-            if closes[i]<opens[i]:  # bearish candle
-                # Check if next 3 candles moved up strongly
-                if i+3<len(closes) and closes[i+3]>highs[i]*1.001:
-                    ob_high=highs[i]; ob_low=lows[i]
-                    # Is current price at/near this OB?
-                    if ob_low<=price<=ob_high*1.002:
-                        ob_sig="BUY"; ob_level=round((ob_high+ob_low)/2,5)
-                        ob_name=f"Bullish OB @ {ob_level}"; break
-            # Bearish OB: bullish candle followed by strong bearish move
-            elif closes[i]>opens[i]:  # bullish candle
-                if i+3<len(closes) and closes[i+3]<lows[i]*0.999:
-                    ob_high=highs[i]; ob_low=lows[i]
-                    if ob_low*0.998<=price<=ob_high:
-                        ob_sig="SELL"; ob_level=round((ob_high+ob_low)/2,5)
-                        ob_name=f"Bearish OB @ {ob_level}"; break
-    except: pass
+    # ════════════════════════════════════════════════════
+    # 3-TIER SIGNAL SYSTEM
+    # Signal only fires when ALL 3 tiers agree
+    # Fewer signals — much higher quality
+    # ════════════════════════════════════════════════════
 
-    # ── STRATEGY 8: FAIR VALUE GAP (FVG) ──────────────────
-    fvg_sig="WAIT"; fvg_name=""
-    try:
-        if len(h_)>=3:
-            # Bullish FVG: gap between candle[i-2].high and candle[i].low
-            for i in range(len(closes)-1, max(len(closes)-15,2), -1):
-                prev_high=highs[i-2]; curr_low=lows[i]
-                prev_low=lows[i-2];   curr_high=highs[i]
-                # Bullish FVG: current low > prev high (gap up)
-                if curr_low>prev_high and price<=curr_low*1.001:
-                    fvg_sig="BUY"; fvg_name=f"Bullish FVG {round(prev_high,5)}-{round(curr_low,5)}"; break
-                # Bearish FVG: current high < prev low (gap down)
-                elif curr_high<prev_low and price>=curr_high*0.999:
-                    fvg_sig="SELL"; fvg_name=f"Bearish FVG {round(curr_high,5)}-{round(prev_low,5)}"; break
-    except: pass
-
-    # ── COMBINE 8 STRATEGIES ─────────────────────────────
-    # Core 6 always count, OB+FVG add extra weight
-    all_sigs=[ema_sig,rsi_sig,macd_sig,bb_sig,sr_sig,bos_sig,ob_sig,fvg_sig]
-    # Extra weight for SMC signals — if OB or FVG agrees, boost confidence
-    smc_bonus=sum(1 for s in [ob_sig,fvg_sig] if s!="WAIT")
-    buys=sum(1 for s in all_sigs if s=="BUY")
-    sells=sum(1 for s in all_sigs if s=="SELL")
-    total=len(all_sigs)
-
-    if buys>sells:
-        direction="BUY"; conf=round(buys/total*100)
-        final_sig="STRONG BUY" if buys>=5 else "BUY"
-    elif sells>buys:
-        direction="SELL"; conf=round(sells/total*100)
-        final_sig="STRONG SELL" if sells>=5 else "SELL"
-    else:
-        direction="WAIT"; conf=50; final_sig="WAIT"
-
-    # ── QUALITY FILTERS ───────────────────────────────────
-    atr_pct=atr/price*100
-    atr_ok=atr_pct>=0.2
-
-    # Weekly trend filter
-    if df_w is not None:
-        cw=df_w["Close"]; e20w=cw.ewm(span=20).mean(); e50w=cw.ewm(span=50).mean()
+    # ── TIER 1: TREND FILTER (Daily + Weekly bias) ────────
+    # Must establish clear directional bias on higher timeframe
+    # Weekly trend
+    if df_w is not None and len(df_w)>=10:
+        cw=df_w["Close"]
+        e20w=cw.ewm(span=20).mean(); e50w=cw.ewm(span=50).mean()
         weekly_bull=float(e20w.iloc[-1])>float(e50w.iloc[-1])
-    else: weekly_bull=direction=="BUY"
-    weekly_ok=weekly_bull==(direction=="BUY") or direction=="WAIT"
+        weekly_slope=(float(e20w.iloc[-1])-float(e20w.iloc[-4]))/float(e20w.iloc[-4])*100
+    else:
+        weekly_bull=(ema_sig=="BUY"); weekly_slope=ema_slope
+
+    # Daily trend — EMA stack must be aligned
+    daily_bull = e20>e50 and e50>e200  # full stack bullish
+    daily_bear = e20<e50 and e50<e200  # full stack bearish
+
+    # Tier 1 decision: weekly + daily must agree
+    if weekly_bull and daily_bull and ema_slope>0:
+        tier1="BUY"
+    elif not weekly_bull and daily_bear and ema_slope<0:
+        tier1="SELL"
+    elif weekly_bull and e20>e50:
+        tier1="BUY"
+    elif not weekly_bull and e20<e50:
+        tier1="SELL"
+    else:
+        tier1="WAIT"  # Conflicting — skip this pair
+
+    # ── TIER 2: LOCATION FILTER (Is price at a key level?) ─
+    # Only trade when price is AT structure — not in the middle
+    ob_sig="WAIT"; ob_level=0; ob_name=""; ob_high=0; ob_low=0
+    fvg_sig="WAIT"; fvg_name=""
+    at_key_level=False
+    location_reason=""
+
+    # Check Order Block
+    try:
+        opens_arr=df_d["Open"].values if "Open" in df_d.columns else c.shift(1).values
+        closes_arr=c.values; highs_arr=h_.values; lows_arr=l_.values
+        for i in range(len(closes_arr)-2, max(len(closes_arr)-40,2), -1):
+            if closes_arr[i]<opens_arr[i]:  # bearish candle = potential bullish OB
+                if i+3<len(closes_arr) and closes_arr[i+3]>highs_arr[i]*1.001:
+                    ob_high=highs_arr[i]; ob_low=lows_arr[i]
+                    if ob_low<=price<=ob_high*1.005:  # price retesting OB
+                        ob_sig="BUY"; ob_level=round((ob_high+ob_low)/2,5)
+                        ob_name=f"Bullish OB @ {ob_level}"
+                        at_key_level=True; location_reason="Price at Bullish Order Block"; break
+            elif closes_arr[i]>opens_arr[i]:  # bullish candle = potential bearish OB
+                if i+3<len(closes_arr) and closes_arr[i+3]<lows_arr[i]*0.999:
+                    ob_high=highs_arr[i]; ob_low=lows_arr[i]
+                    if ob_low*0.995<=price<=ob_high:
+                        ob_sig="SELL"; ob_level=round((ob_high+ob_low)/2,5)
+                        ob_name=f"Bearish OB @ {ob_level}"
+                        at_key_level=True; location_reason="Price at Bearish Order Block"; break
+    except: pass
+
+    # Check FVG if no OB found
+    if not at_key_level:
+        try:
+            for i in range(len(closes_arr)-1, max(len(closes_arr)-20,2), -1):
+                prev_h2=highs_arr[i-2]; curr_l=lows_arr[i]
+                prev_l2=lows_arr[i-2];  curr_h=highs_arr[i]
+                if curr_l>prev_h2 and price<=curr_l*1.002:
+                    fvg_sig="BUY"; fvg_name=f"Bullish FVG {round(prev_h2,5)}-{round(curr_l,5)}"
+                    at_key_level=True; location_reason=f"Price in {fvg_name}"; break
+                elif curr_h<prev_l2 and price>=curr_h*0.998:
+                    fvg_sig="SELL"; fvg_name=f"Bearish FVG {round(curr_h,5)}-{round(prev_l2,5)}"
+                    at_key_level=True; location_reason=f"Price in {fvg_name}"; break
+        except: pass
+
+    # Check S/R if no OB or FVG
+    if not at_key_level:
+        sr_range=resistance-support
+        near_sup=price<=(support+sr_range*0.06)
+        near_res=price>=(resistance-sr_range*0.06)
+        if near_sup and tier1=="BUY":
+            at_key_level=True; location_reason=f"Price at Support {round(support,5)}"
+        elif near_res and tier1=="SELL":
+            at_key_level=True; location_reason=f"Price at Resistance {round(resistance,5)}"
+
+    # Tier 2 decision
+    smc_direction="WAIT"
+    if ob_sig!="WAIT": smc_direction=ob_sig
+    elif fvg_sig!="WAIT": smc_direction=fvg_sig
+    elif at_key_level:
+        smc_direction="BUY" if near_sup else "SELL" if near_res else "WAIT"
+
+    tier2="MATCH" if (at_key_level and
+        (smc_direction==tier1 or smc_direction=="WAIT")) else "WAIT"
+
+    # ── TIER 3: ENTRY TRIGGER (1H/4H confirmation) ────────
+    # Need a trigger on lower timeframe to confirm entry timing
+    def get_trigger(df_tf):
+        if df_tf is None or len(df_tf)<30: return "WAIT","No data"
+        ct=df_tf["Close"]; ht=df_tf["High"]; lt=df_tf["Low"]
+        # EMA alignment on this TF
+        e20t=ct.ewm(span=20).mean(); e50t=ct.ewm(span=50).mean()
+        rsi_t=get_rsi(ct,14)
+        # MACD on this TF
+        macd_t=ct.ewm(span=12).mean()-ct.ewm(span=26).mean()
+        sig_t=macd_t.ewm(span=9).mean()
+        hist_t=macd_t-sig_t
+        macd_cross_up=float(macd_t.iloc[-1])>float(sig_t.iloc[-1]) and float(macd_t.iloc[-2])<=float(sig_t.iloc[-2])
+        macd_cross_dn=float(macd_t.iloc[-1])<float(sig_t.iloc[-1]) and float(macd_t.iloc[-2])>=float(sig_t.iloc[-2])
+        # BOS on this TF
+        tf_high=float(ht.iloc[-20:-3].max()); tf_low=float(lt.iloc[-20:-3].min())
+        price_t=float(ct.iloc[-1])
+        bos_bull=price_t>tf_high; bos_bear=price_t<tf_low
+        # Trigger conditions
+        if macd_cross_up and float(e20t.iloc[-1])>float(e50t.iloc[-1]):
+            return "BUY","MACD cross + EMA aligned"
+        if macd_cross_dn and float(e20t.iloc[-1])<float(e50t.iloc[-1]):
+            return "SELL","MACD cross + EMA aligned"
+        if bos_bull and rsi_t>50:
+            return "BUY","BOS breakout + RSI bullish"
+        if bos_bear and rsi_t<50:
+            return "SELL","BOS breakdown + RSI bearish"
+        if float(e20t.iloc[-1])>float(e50t.iloc[-1]) and rsi_t>55:
+            return "BUY","EMA + RSI confluence"
+        if float(e20t.iloc[-1])<float(e50t.iloc[-1]) and rsi_t<45:
+            return "SELL","EMA + RSI confluence"
+        return "WAIT","No clear trigger"
+
+    trig_4h,trig_reason_4h=get_trigger(df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>120 else df_4h)
+    trig_1h,trig_reason_1h=get_trigger(df_1h.iloc[-60:]  if df_1h  is not None and len(df_1h)>60  else df_1h)
+
+    # Tier 3: at least one timeframe must give a trigger in the right direction
+    if trig_4h==tier1 or trig_1h==tier1:
+        tier3=tier1
+        trigger_reason=trig_reason_4h if trig_4h==tier1 else trig_reason_1h
+    else:
+        tier3="WAIT"
+        trigger_reason="No trigger"
+
+    # ── FINAL SIGNAL — all 3 tiers must agree ─────────────
+    if tier1!="WAIT" and tier2=="MATCH" and tier3==tier1:
+        direction=tier1
+        # Confidence based on quality of each tier
+        base_conf=60
+        if ob_sig==direction:        base_conf+=15  # OB is strongest location signal
+        elif fvg_sig==direction:     base_conf+=10  # FVG is good
+        elif at_key_level:           base_conf+=7   # S/R is basic
+        if trig_4h==direction:       base_conf+=10  # 4H trigger = strong
+        if trig_1h==direction:       base_conf+=5   # 1H trigger = extra
+        if daily_bull and direction=="BUY":   base_conf+=5
+        if daily_bear and direction=="SELL":  base_conf+=5
+        if weekly_bull and direction=="BUY":  base_conf+=5
+        if not weekly_bull and direction=="SELL": base_conf+=5
+        conf=min(95,base_conf)
+        final_sig="STRONG BUY" if direction=="BUY" and conf>=80 else                   "STRONG SELL" if direction=="SELL" and conf>=80 else direction
+    else:
+        direction="WAIT"; conf=0; final_sig="WAIT"
+        trigger_reason=f"T1:{tier1} T2:{tier2} T3:{tier3}"
+
+    # ── MTF for display ───────────────────────────────────
+    sig_daily=ema_sig
+    sig_4h=trig_4h
+    sig_1h=trig_1h
+    mtf_sigs=[s for s in [sig_daily,sig_4h,sig_1h] if s!="WAIT"]
+    mtf_buys=sum(1 for s in mtf_sigs if "BUY" in s)
+    mtf_sells=sum(1 for s in mtf_sigs if "SELL" in s)
+    mtf_ok=True  # already confirmed by tier 3
+    mtf_agree=f"BUY — {mtf_buys}/{len(mtf_sigs)} TFs" if mtf_buys>mtf_sells else               f"SELL — {mtf_sells}/{len(mtf_sigs)} TFs" if mtf_sells>mtf_buys else "Mixed TFs"
 
     # Session filter
     hour=datetime.datetime.now(datetime.timezone.utc).hour
     session_ok=(7<=hour<=17) or (12<=hour<=21)
     session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
 
-    # MTF confirmation
-    def tf_sig(df_tf):
-        if df_tf is None: return "WAIT"
-        ct=df_tf["Close"]
-        if len(ct)<30: return "WAIT"
-        e20t=ct.ewm(span=20).mean().iloc[-1]; e50t=ct.ewm(span=50).mean().iloc[-1]
-        rt=get_rsi(ct)
-        if e20t>e50t and rt>52: return "BUY"
-        if e20t<e50t and rt<48: return "SELL"
-        if e20t>e50t: return "BUY"
-        if e20t<e50t: return "SELL"
-        return "WAIT"
-
-    sig_daily=ema_sig
-    sig_4h=tf_sig(df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>120 else df_4h)
-    sig_1h=tf_sig(df_1h.iloc[-60:]  if df_1h  is not None and len(df_1h)>60  else df_1h)
-
-    mtf_sigs=[s for s in [sig_daily,sig_4h,sig_1h] if s!="WAIT"]
-    mtf_buys=sum(1 for s in mtf_sigs if "BUY" in s)
-    mtf_sells=sum(1 for s in mtf_sigs if "SELL" in s)
-    mtf_ok=(mtf_buys>mtf_sells and direction=="BUY") or (mtf_sells>mtf_buys and direction=="SELL")
-    mtf_agree=f"BUY — {mtf_buys}/{len(mtf_sigs)} TFs" if mtf_buys>mtf_sells else f"SELL — {mtf_sells}/{len(mtf_sigs)} TFs" if mtf_sells>mtf_buys else "Mixed TFs"
-
-    # Candle info for display only (not used in scoring)
+    # Candle display info
     vol_ok=True; candle_quality_ok=True
     o=float(df_d["Open"].iloc[-1]) if "Open" in df_d.columns else float(c.iloc[-2])
     hi=float(h_.iloc[-1]); lo=float(l_.iloc[-1]); cl=float(c.iloc[-1])
@@ -789,71 +863,63 @@ def analyse_pair(symbol,pair_name):
     elif cl>o: candle_name="Bullish close"
     else: candle_name="Bearish close"
 
-    # Trend strength (simple slope check)
     trend_strong=abs(ema_slope)>0.05
+    atr_pct=atr/price*100
+    atr_ok=atr_pct>=0.15
+    weekly_ok=(weekly_bull and direction=="BUY") or (not weekly_bull and direction=="SELL") or direction=="WAIT"
+    smc_bonus=1 if ob_sig!="WAIT" else 0
 
     # ── SPECIALIST WEIGHTING ──────────────────────────────
     spec=SPECIALIST.get(pair_name,1.0)
-    adj_conf=min(99,round(conf*spec)) if direction!="WAIT" else 50
+    adj_conf=min(95,round(conf*spec)) if direction!="WAIT" else 0
 
-    # ── GRADE (A/B/C) — tuned for 6 strategies ────────────
-    agree_count=max(buys,sells)
-    filters_passed=sum([atr_ok,weekly_ok,session_ok,mtf_ok])
-    if adj_conf>=83 and agree_count>=6 and filters_passed>=3: grade="A"
-    elif adj_conf>=66 and agree_count>=5 and filters_passed>=2: grade="B"
-    elif adj_conf>=50 and agree_count>=3 and filters_passed>=1: grade="C"
-    else: grade="D"
-    adx=0  # not used in 6-strategy mode
+    # ── GRADE ─────────────────────────────────────────────
+    # Grading based on 3-tier quality
+    if direction=="WAIT":
+        grade="D"
+    elif adj_conf>=82 and ob_sig!="WAIT" and trig_4h==direction:
+        grade="A"  # OB + 4H trigger + high conf
+    elif adj_conf>=70 and at_key_level and (trig_4h==direction or trig_1h==direction):
+        grade="B"  # Key level + trigger
+    elif adj_conf>=60:
+        grade="C"  # Basic confluence
+    else:
+        grade="D"
 
-    # Skip D-grade signals entirely — not worth showing
-    if grade=="D" and direction!="WAIT":
+    # Skip D signals
+    if grade=="D":
         direction="WAIT"; final_sig="WAIT"
 
-    # ── TRADE LEVELS — Swing-based (more realistic) ──────
-    # SL = just below/above nearest swing low/high (not ATR)
-    # TP1 = 50% of distance to next swing (very achievable)
-    # TP2 = next swing high/low (natural target)
-    # TP3 = 2x swing distance (stretch)
+    buys=1 if direction=="BUY" else 0
+    sells=1 if direction=="SELL" else 0
+    agree_count=3 if grade=="A" else 2 if grade=="B" else 1
 
-    # Find nearest swing points for smarter SL/TP
-    try:
-        if direction=="BUY":
-            # SL just below recent swing low
-            swing_low  = float(l_.iloc[-10:].min())
-            swing_high = float(h_.iloc[-20:].max())
-            sl_dist    = max(atr*0.8, price - swing_low)  # at least 0.8x ATR
-            tp_target  = swing_high - price  # distance to next resistance
-            sl   = price - sl_dist
-            tp1  = price + min(sl_dist*0.8, tp_target*0.4)   # 0.8:1 — very achievable
-            tp2  = price + min(sl_dist*1.5, tp_target*0.7)   # near swing high
-            tp3  = price + min(sl_dist*2.5, tp_target)        # at swing high
-        elif direction=="SELL":
-            swing_high = float(h_.iloc[-10:].max())
-            swing_low  = float(l_.iloc[-20:].min())
-            sl_dist    = max(atr*0.8, swing_high - price)
-            tp_target  = price - swing_low
-            sl   = price + sl_dist
-            tp1  = price - min(sl_dist*0.8, tp_target*0.4)
-            tp2  = price - min(sl_dist*1.5, tp_target*0.7)
-            tp3  = price - min(sl_dist*2.5, tp_target)
-        else:
-            sl=tp1=tp2=tp3=0; sl_dist=atr
-    except:
-        # Fallback to ATR-based if swing detection fails
-        sl_dist=atr*1.0
-        if direction=="BUY":
-            sl=price-sl_dist; tp1=price+sl_dist*0.8; tp2=price+sl_dist*1.5; tp3=price+sl_dist*2.5
-        elif direction=="SELL":
-            sl=price+sl_dist; tp1=price-sl_dist*0.8; tp2=price-sl_dist*1.5; tp3=price-sl_dist*2.5
-        else:
-            sl=tp1=tp2=tp3=0
+    # ── TRADE LEVELS ─────────────────────────────────────
+    # Rules:
+    # SL  = 0.5x ATR  (tight — protects capital)
+    # TP1 = 1.0x ATR  (2:1 R/R — TP is ALWAYS bigger than SL)
+    # TP2 = 2.0x ATR  (4:1 R/R)
+    # TP3 = 3.0x ATR  (6:1 R/R)
+    # This ensures TP1 profit > SL loss every time
 
-    entry=price
+    sl_dist  = atr * 0.5   # SL is tight
+    tp1_dist = atr * 1.0   # TP1 = 2x SL (good R:R)
+    tp2_dist = atr * 2.0   # TP2 = 4x SL
+    tp3_dist = atr * 3.0   # TP3 = 6x SL
 
-    # Entry validity — how far has price moved from ideal entry
-    entry_valid    = True
-    entry_drift    = 0.0
-    # (shown on card)
+    entry = price
+    if direction=="BUY":
+        sl  = price - sl_dist
+        tp1 = price + tp1_dist
+        tp2 = price + tp2_dist
+        tp3 = price + tp3_dist
+    elif direction=="SELL":
+        sl  = price + sl_dist
+        tp1 = price - tp1_dist
+        tp2 = price - tp2_dist
+        tp3 = price - tp3_dist
+    else:
+        sl=tp1=tp2=tp3=0
 
     # ── MARKET CONDITION LABEL ────────────────────────────
     if atr_pct>1.0:   vol_label="High volatility"
@@ -1559,10 +1625,28 @@ elif "Pulse" in page:
     compact=st.toggle("Compact view",value=False)
 
     # Session state init
-    if "pulse_signals"      not in st.session_state: st.session_state.pulse_signals=[]
-    if "pulse_last_scan"    not in st.session_state: st.session_state.pulse_last_scan=None
-    if "auto_refresh"       not in st.session_state: st.session_state.auto_refresh=False
-    if "refresh_interval"   not in st.session_state: st.session_state.refresh_interval=15
+    if "pulse_signals"    not in st.session_state: st.session_state.pulse_signals=[]
+    if "pulse_last_scan"  not in st.session_state: st.session_state.pulse_last_scan=None
+    if "auto_refresh"     not in st.session_state: st.session_state.auto_refresh=False
+    if "refresh_interval" not in st.session_state: st.session_state.refresh_interval=15
+    if "pulse_loaded"     not in st.session_state: st.session_state.pulse_loaded=False
+
+    # Auto-scan on first load — no manual refresh needed
+    if not st.session_state.pulse_loaded:
+        st.session_state.pulse_loaded=True
+        _auto_sigs=[]
+        _prog=st.progress(0); _items=list(pairs.items()); _stat=st.empty()
+        _stat.caption("⚡ Loading signals automatically...")
+        for _i,(_n,_s) in enumerate(_items):
+            try:
+                _sig=analyse_pair(_s,_n)
+                if _sig and _sig["direction"]!="WAIT": _auto_sigs.append(_sig)
+            except: pass
+            _prog.progress((_i+1)/len(_items))
+        _prog.empty(); _stat.empty()
+        st.session_state.pulse_signals=_auto_sigs
+        st.session_state.pulse_last_scan=datetime.datetime.now(datetime.timezone.utc)
+        st.rerun()
 
     # Signal expiry: mark signals older than X minutes as expired
     EXPIRY_MINUTES = 60  # signals expire after 60 min
