@@ -2632,6 +2632,37 @@ elif "Settings" in page:
             else: st.error("❌ Passwords don't match or too short.")
         else: st.error("❌ Current password incorrect.")
     st.divider()
+    st.subheader("📡 Data Source")
+    td_key=st.secrets.get("TWELVE_DATA_KEY","")
+    if td_key:
+        st.success("✅ Twelve Data key found — using real-time data")
+        if st.button("🧪 Test Twelve Data Connection",use_container_width=True):
+            with st.spinner("Testing..."):
+                ok,msg=test_twelve_data()
+            if ok: st.success(msg)
+            else: st.error(f"❌ {msg}")
+    else:
+        st.warning("⚠️ No TWELVE_DATA_KEY in secrets — using Yahoo Finance (delayed). Add key from twelvedata.com for real-time data.")
+
+    st.divider()
+    st.subheader("🔧 Debug Signals")
+    if st.button("🔍 Test Data — EUR/USD",use_container_width=True):
+        with st.spinner("Fetching data..."):
+            df=fetch("EURUSD=X","6mo","1d")
+        if df is not None:
+            st.success(f"✅ Data OK — {len(df)} candles | Latest close: {round(float(df['Close'].iloc[-1]),5)}")
+            st.dataframe(df.tail(3)[["Open","High","Low","Close"]].round(5),use_container_width=True)
+        else:
+            st.error("❌ No data returned — check connection")
+    if st.button("🔍 Test Signal — EUR/USD",use_container_width=True):
+        with st.spinner("Analysing..."):
+            sig=analyse_pair("EURUSD=X","EUR/USD")
+        if sig:
+            st.success(f"✅ Signal OK — {sig['direction']} Grade {sig['grade']} {sig['confidence']}%")
+        else:
+            st.error("❌ Signal returned None — data issue")
+
+    st.divider()
     if st.button("🚪 Logout",use_container_width=True):
         for k in ["logged_in","user_email","user_tier","is_admin"]:
             st.session_state[k]=DEFAULTS.get(k,"")
