@@ -747,10 +747,10 @@ def analyse_pair(symbol,pair_name):
         except: pass
 
     # Check S/R if no OB or FVG
+    sr_range=resistance-support
+    near_sup=price<=(support+sr_range*0.06)
+    near_res=price>=(resistance-sr_range*0.06)
     if not at_key_level:
-        sr_range=resistance-support
-        near_sup=price<=(support+sr_range*0.06)
-        near_res=price>=(resistance-sr_range*0.06)
         if near_sup and tier1=="BUY":
             at_key_level=True; location_reason=f"Price at Support {round(support,5)}"
         elif near_res and tier1=="SELL":
