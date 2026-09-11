@@ -537,6 +537,82 @@ def get_market_status():
         "weekday": weekday,
     }
 
+# ── Prime session per pair ───────────────────────────────
+PAIR_PRIME_SESSIONS = {
+    "EUR/USD":        [(7,10),(12,17)],   # London open + London/NY overlap
+    "GBP/USD":        [(7,10),(12,17)],   # London open + London/NY overlap
+    "USD/JPY":        [(0,3),(7,10)],     # Asian + London open
+    "AUD/USD":        [(22,24),(0,4)],    # Asian session
+    "USD/CHF":        [(7,10),(12,17)],   # London + NY
+    "USD/CAD":        [(12,17)],          # NY session only
+    "Gold (XAU/USD)": [(7,10),(12,17)],   # London + NY overlap (most volatile)
+    "Bitcoin":        [(12,17),(20,24)],  # NY + evening
+    "NASDAQ":         [(13,20)],          # NY session only
+    "S&P 500":        [(13,20)],          # NY session only
+}
+
+def is_prime_session(pair_name):
+    """Check if pair is in its best trading session right now"""
+    now=datetime.datetime.now(datetime.timezone.utc)
+    if now.weekday()>=5: return False  # Weekend
+    hour=now.hour
+    sessions=PAIR_PRIME_SESSIONS.get(pair_name,[])
+    for start,end in sessions:
+        if end==24:
+            if hour>=start: return True
+        elif hour>=start and hour<end:
+            return True
+    return False
+
+def get_prime_session_label(pair_name):
+    """Get human readable session info for pair"""
+    now=datetime.datetime.now(datetime.timezone.utc)
+    hour=now.hour
+    sessions=PAIR_PRIME_SESSIONS.get(pair_name,[])
+    for start,end in sessions:
+        if (end==24 and hour>=start) or (hour>=start and hour<end):
+            return f"✅ Prime hours ({start:02d}:00-{end if end<24 else 24:02d}:00 UTC)"
+    # Find next session
+    next_start=None
+    for start,end in sorted(sessions):
+        if start>hour:
+            next_start=start; break
+    if next_start:
+        return f"⏳ Next prime: {next_start:02d}:00 UTC ({next_start-hour}h away)"
+    return f"⏳ Next prime: tomorrow"
+
+# ── News blackout checker ─────────────────────────────────
+HIGH_IMPACT_HOURS_UTC = {
+    # Day of week (0=Mon) → list of (hour, event_name, affected_pairs)
+    # These are typical recurring high-impact times
+    0: [(13,30,"FOMC/Fed speeches",["EUR/USD","GBP/USD","Gold (XAU/USD)","USD/JPY","NASDAQ","S&P 500"])],
+    1: [(13,30,"US data releases",["EUR/USD","USD/JPY","Gold (XAU/USD)"])],
+    2: [(13,30,"US data releases",["EUR/USD","USD/JPY","Gold (XAU/USD)"]),(18,0,"Fed Chair speech",["all"])],
+    3: [(12,30,"ECB/BOE decisions",["EUR/USD","GBP/USD"]),(13,30,"US jobless claims",["USD/JPY","Gold (XAU/USD)"])],
+    4: [(13,30,"NFP — Non Farm Payrolls",["all"])],  # First Friday — most important
+}
+
+def check_news_blackout(pair_name):
+    """
+    Check if current time is near a high-impact news event.
+    Returns (is_blackout, event_name, minutes_away)
+    """
+    now=datetime.datetime.now(datetime.timezone.utc)
+    weekday=now.weekday()
+    hour=now.hour; minute=now.minute
+    current_mins=hour*60+minute
+
+    events=HIGH_IMPACT_HOURS_UTC.get(weekday,[])
+    for ev_hour,ev_min,ev_name,pairs in events:
+        affected=("all" in pairs or pair_name in pairs)
+        if not affected: continue
+        event_mins=ev_hour*60+ev_min
+        diff=event_mins-current_mins
+        # Blackout: 30 min before to 60 min after event
+        if -60<=diff<=30:
+            return True, ev_name, diff
+    return False, "", 0
+
 def is_pair_active(pair_name):
     """Check if a specific pair is in its best trading hours"""
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -859,7 +935,9 @@ def analyse_pair(symbol,pair_name):
         "mtf_agree":mtf_agree,"market_cond":market_cond,
         "candle_ok":candle_quality_ok,"vol_ok":vol_ok,
         "weekly_ok":weekly_ok,"session_ok":session_ok,"mtf_ok":mtf_ok,
-        "session_label":session_label,"strategies":strat_names,
+        "session_label":session_label,"prime_session":prime_session,
+        "news_blackout":news_blackout,"news_event":news_event,
+        "strategies":strat_names,
         "agree":f"{agree_count}/8 agree","ob_name":ob_name,"fvg_name":fvg_name,"smc_bonus":smc_bonus,"rsi":round(rsi_val,1),
         "adx":0,"candle_name":candle_name,
         "buys":buys,"sells":sells,
@@ -911,6 +989,8 @@ def render_signal_card(sig):
       <div class='pair-name'>{sig["pair"]} <span style='font-size:12px;color:#8b949e;font-weight:400'>{active_badge}{"🟢 Active hours" if pair_active else ""}</span></div>
       <div class='mtf-line'>MTF: {sig.get("mtf_agree","—")}</div>
       <div class='market-condition'>📊 {sig.get("market_cond","—")}</div>
+      {"<div style='background:#0a1a0a;border-radius:6px;padding:4px 10px;margin:2px 0;font-size:11px;color:#3fb950'>✅ Prime trading hours for " + sig.get("pair","") + "</div>" if sig.get("prime_session") else "<div style='background:#1a1200;border-radius:6px;padding:4px 10px;margin:2px 0;font-size:11px;color:#ffd200'>⏳ Outside prime hours — lower confidence</div>"}
+      {"<div style='background:#1a0a0a;border-radius:6px;padding:4px 10px;margin:2px 0;font-size:11px;color:#f85149'>⛔ NEWS BLACKOUT: " + sig.get("news_event","") + " — Signal blocked</div>" if sig.get("news_blackout") else ""}
       <div style='background:#1a2040;border-radius:6px;padding:6px 10px;margin:4px 0;font-size:11px'>
         ⏰ <b>{sig.get("time_ago","just now")}</b> &nbsp;|&nbsp;
         📍 Entry: <b>{round(sig.get("entry",0), 5 if sig.get("entry",0)<100 else 2)}</b><br>
