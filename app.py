@@ -810,10 +810,23 @@ def analyse_pair(symbol,pair_name):
     else: weekly_bull=(direction=="BUY")
     weekly_ok=(weekly_bull and direction=="BUY") or (not weekly_bull and direction=="SELL") or direction=="WAIT"
 
-    # Session
+    # Session + news filter
     hour=datetime.datetime.now(datetime.timezone.utc).hour
     session_ok=(7<=hour<=17) or (12<=hour<=21)
     session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
+    # Prime session check
+    try:
+        prime_session=is_prime_session(pair_name)
+    except: prime_session=session_ok
+    # News blackout check
+    try:
+        news_blackout,news_event,news_mins=check_news_blackout(pair_name)
+    except: news_blackout=False; news_event=""; news_mins=0
+    # Apply filters
+    if not prime_session and direction!="WAIT":
+        conf=max(0,conf-10)
+    if news_blackout and direction!="WAIT":
+        direction="WAIT"; final_sig="WAIT"; conf=0
 
     # MTF
     def tf_sig(df_tf):
