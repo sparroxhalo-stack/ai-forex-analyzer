@@ -238,6 +238,165 @@ Be direct, honest and encouraging. No fluff."""
     except: pass
     return ""
 
+# ════════════════════════════════════════════════════════════
+# PAYMENT & TRIAL SYSTEM
+# ════════════════════════════════════════════════════════════
+PLAN_PRICE   = 19.99
+TRIAL_DAYS   = 14
+CURRENCY     = "USD"
+
+def start_free_trial(email):
+    """Start 14-day free trial for a new user"""
+    try:
+        trial_end = (datetime.datetime.now(datetime.timezone.utc) +
+                     datetime.timedelta(days=TRIAL_DAYS)).isoformat()
+        r = requests.patch(
+            sb_url("users") + f"?email=eq.{email}",
+            headers=get_headers(),
+            json={"tier":"trial","trial_end":trial_end,"trial_started":True},
+            timeout=8)
+        return r.status_code in [200,204]
+    except: return False
+
+def check_trial_status(user):
+    """Check if trial is still active or expired"""
+    if user.get("tier") not in ["trial"]: return user.get("tier","free")
+    trial_end = user.get("trial_end","")
+    if not trial_end: return "free"
+    try:
+        end_dt = datetime.datetime.fromisoformat(trial_end.replace("Z","+00:00"))
+        if end_dt.tzinfo is None: end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if now > end_dt:
+            # Trial expired — downgrade to free
+            requests.patch(sb_url("users") + f"?email=eq.{user.get('email','')}",
+                headers=get_headers(), json={"tier":"free"}, timeout=8)
+            return "free"
+        return "trial"
+    except: return "free"
+
+def get_trial_days_left(user):
+    """Get number of days left in trial"""
+    trial_end = user.get("trial_end","")
+    if not trial_end: return 0
+    try:
+        end_dt = datetime.datetime.fromisoformat(trial_end.replace("Z","+00:00"))
+        if end_dt.tzinfo is None: end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+        diff = end_dt - datetime.datetime.now(datetime.timezone.utc)
+        return max(0, diff.days)
+    except: return 0
+
+def initiate_pesapal_payment(email, amount, currency, description):
+    """Initiate a Pesapal payment and return the payment URL"""
+    try:
+        consumer_key    = st.secrets.get("PESAPAL_CONSUMER_KEY","")
+        consumer_secret = st.secrets.get("PESAPAL_CONSUMER_SECRET","")
+        if not consumer_key or not consumer_secret:
+            return None, "Pesapal keys not configured in secrets"
+
+        # Step 1: Get Pesapal auth token
+        auth_url = "https://pay.pesapal.com/v3/api/Auth/RequestToken"
+        auth_r = requests.post(auth_url,
+            headers={"Content-Type":"application/json","Accept":"application/json"},
+            json={"consumer_key":consumer_key,"consumer_secret":consumer_secret},
+            timeout=15)
+
+        if auth_r.status_code != 200:
+            return None, f"Auth failed: {auth_r.text[:100]}"
+
+        token = auth_r.json().get("token","")
+        if not token: return None, "No token received from Pesapal"
+
+        # Step 2: Register IPN (Instant Payment Notification)
+        ipn_url = st.secrets.get("PESAPAL_IPN_URL",
+            "https://ai-forex-analyzer.streamlit.app")
+        ipn_r = requests.post(
+            "https://pay.pesapal.com/v3/api/URLSetup/RegisterIPN",
+            headers={"Authorization":f"Bearer {token}",
+                     "Content-Type":"application/json","Accept":"application/json"},
+            json={"url":ipn_url,"ipn_notification_type":"GET"},
+            timeout=15)
+        ipn_id = ipn_r.json().get("ipn_id","") if ipn_r.status_code==200 else ""
+
+        # Step 3: Submit order
+        order_id = f"SPARRO_{email.replace('@','_').replace('.','_')}_{int(datetime.datetime.now().timestamp())}"
+        order_r = requests.post(
+            "https://pay.pesapal.com/v3/api/Transactions/SubmitOrderRequest",
+            headers={"Authorization":f"Bearer {token}",
+                     "Content-Type":"application/json","Accept":"application/json"},
+            json={
+                "id":           order_id,
+                "currency":     currency,
+                "amount":       amount,
+                "description":  description,
+                "callback_url": ipn_url,
+                "notification_id": ipn_id,
+                "billing_address": {
+                    "email_address": email,
+                    "first_name":    email.split("@")[0],
+                    "last_name":     "User",
+                }
+            },
+            timeout=15)
+
+        if order_r.status_code==200:
+            data = order_r.json()
+            pay_url = data.get("redirect_url","")
+            order_tracking = data.get("order_tracking_id","")
+            # Save pending payment to Supabase
+            requests.post(sb_url("payments"), headers=get_headers(),
+                json={"user_email":email,"order_id":order_id,
+                      "order_tracking_id":order_tracking,
+                      "amount":amount,"currency":currency,
+                      "status":"pending",
+                      "created_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                timeout=8)
+            return pay_url, None
+        else:
+            return None, f"Order failed: {order_r.text[:150]}"
+
+    except Exception as e:
+        return None, str(e)
+
+def check_payment_status(email, order_tracking_id):
+    """Check if a Pesapal payment was completed"""
+    try:
+        consumer_key    = st.secrets.get("PESAPAL_CONSUMER_KEY","")
+        consumer_secret = st.secrets.get("PESAPAL_CONSUMER_SECRET","")
+        # Get token
+        auth_r = requests.post("https://pay.pesapal.com/v3/api/Auth/RequestToken",
+            headers={"Content-Type":"application/json","Accept":"application/json"},
+            json={"consumer_key":consumer_key,"consumer_secret":consumer_secret},
+            timeout=15)
+        token = auth_r.json().get("token","") if auth_r.status_code==200 else ""
+        if not token: return False
+
+        # Check transaction status
+        status_r = requests.get(
+            f"https://pay.pesapal.com/v3/api/Transactions/GetTransactionStatus?orderTrackingId={order_tracking_id}",
+            headers={"Authorization":f"Bearer {token}","Accept":"application/json"},
+            timeout=15)
+
+        if status_r.status_code==200:
+            data = status_r.json()
+            status = data.get("payment_status_description","")
+            if status == "Completed":
+                # Upgrade user to premium
+                sub_end = (datetime.datetime.now(datetime.timezone.utc) +
+                           datetime.timedelta(days=30)).isoformat()
+                requests.patch(sb_url("users") + f"?email=eq.{email}",
+                    headers=get_headers(),
+                    json={"tier":"premium","subscription_end":sub_end},
+                    timeout=8)
+                # Update payment record
+                requests.patch(sb_url("payments") + f"?order_tracking_id=eq.{order_tracking_id}",
+                    headers=get_headers(),
+                    json={"status":"completed","paid_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                    timeout=8)
+                return True
+        return False
+    except: return False
+
 def get_user(email):
     try:
         r=requests.get(sb_url(f"users?email=eq.{email}&select=*"),headers=get_headers(),timeout=8)
@@ -345,7 +504,10 @@ def show_login():
                     with st.spinner("Creating account..."):
                         ok,err=create_user(re,rp,"free")
                     if ok:
-                        st.success("✅ Account created successfully! Go to Login tab.")
+                        # Auto-start 14-day free trial
+                        start_free_trial(re.strip())
+                        st.success(f"✅ Account created! Your {TRIAL_DAYS}-day FREE trial starts now.")
+                        st.info(f"🎉 You have full Premium access for {TRIAL_DAYS} days — no credit card needed!")
                         st.balloons()
                     else:
                         # Parse Supabase error
@@ -1064,7 +1226,7 @@ st.markdown(f"""
 # ════════════════════════════════════════════════════════════
 # TAB NAVIGATION
 # ════════════════════════════════════════════════════════════
-tabs_free=["⚡ Pulse","👁 Watchlist","📊 Scanner","💰 Risk Calc","💎 Upgrade"]
+tabs_free=["⚡ Pulse","👁 Watchlist","📊 Scanner","💰 Risk Calc","💳 Subscribe","💎 Upgrade"]
 tabs_premium=["⚡ Pulse","👁 Watchlist","📊 Scanner","🏆 Trade of Day",
               "📐 Multi-TF","💹 Strength","🎯 Precision","🏢 Prop Firm",
               "🗞️ News","🤖 AI Strategy","📸 Chart AI","🔔 Alerts",
@@ -1606,6 +1768,25 @@ elif "Pulse" in page:
 
         ⚠️ *Trading involves significant risk of loss. Past performance does not guarantee future results.*
         """)
+
+    # Trial/subscription banner
+    if st.session_state.get("user_tier")=="trial":
+        user_data=get_user(st.session_state.user_email)
+        days_left=get_trial_days_left(user_data) if user_data else 0
+        if days_left<=3:
+            st.markdown(f"""
+            <div style='background:#1a0a0a;border:2px solid #f85149;border-radius:10px;
+              padding:12px;margin-bottom:10px;text-align:center'>
+              <b style='color:#f85149'>⚠️ Trial expires in {days_left} day{"s" if days_left!=1 else ""}!</b>
+              <span style='color:#8b949e;font-size:12px'> Subscribe now to keep Premium access → 💳 Subscribe tab</span>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style='background:#0a1a0a;border:1px solid #3fb95040;border-radius:10px;
+              padding:10px;margin-bottom:10px;text-align:center'>
+              <b style='color:#3fb950'>🎉 Free Trial Active — {days_left} days left</b>
+              <span style='color:#8b949e;font-size:12px'> Full Premium access. Subscribe to continue after trial.</span>
+            </div>""", unsafe_allow_html=True)
 
     # Market status check
     mkt = get_market_status()
@@ -2769,6 +2950,156 @@ elif "Settings" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: UPGRADE
 # ════════════════════════════════════════════════════════════
+elif "Subscribe" in page:
+    st.markdown("### 💳 Subscribe to Premium")
+
+    email = st.session_state.get("user_email","")
+    tier  = st.session_state.get("user_tier","free")
+
+    # Get user data for trial info
+    user_data = get_user(email)
+    days_left = get_trial_days_left(user_data) if user_data else 0
+
+    # Status banner
+    if tier == "premium":
+        sub_end = user_data.get("subscription_end","") if user_data else ""
+        st.success(f"✅ You are Premium! Subscription active.")
+        if sub_end:
+            try:
+                end_dt = datetime.datetime.fromisoformat(sub_end.replace("Z","+00:00"))
+                st.info(f"📅 Renews: {end_dt.strftime('%B %d, %Y')}")
+            except: pass
+    elif tier == "trial":
+        color = "#f85149" if days_left<=3 else "#ffd200"
+        st.markdown(f"""
+        <div style='background:#161b22;border:2px solid {color};border-radius:12px;
+          padding:16px;text-align:center;margin-bottom:16px'>
+          <h3 style='color:{color};margin:0'>🎉 Free Trial Active</h3>
+          <p style='color:#e6edf3;font-size:18px;margin:8px 0'>{days_left} days remaining</p>
+          <p style='color:#8b949e;font-size:13px;margin:0'>Subscribe now to keep Premium after your trial ends</p>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style='background:#1a0a0a;border:1px solid #f8514940;border-radius:10px;
+          padding:12px;text-align:center;margin-bottom:12px'>
+          <b style='color:#f85149'>❌ Free Plan — Limited features</b><br>
+          <span style='color:#8b949e;font-size:12px'>Subscribe to unlock all 10 pairs, Grade A/B/C signals, Prop Firm tools, AI features and more</span>
+        </div>""", unsafe_allow_html=True)
+
+    # Pricing card
+    st.markdown(f"""
+    <div style='background:linear-gradient(135deg,#0d1a3a,#0a0a0f);
+      border:2px solid #0072ff;border-radius:16px;padding:24px;
+      text-align:center;margin:16px 0'>
+      <div style='font-size:40px'>⚡</div>
+      <h2 style='color:#fff;margin:8px 0'>Sparro FX AI Premium</h2>
+      <div style='font-size:48px;font-weight:900;color:#fff;margin:8px 0'>
+        ${PLAN_PRICE}<span style='font-size:18px;color:#8b949e'>/month</span>
+      </div>
+      <p style='color:#8b949e;margin:8px 0'>Cancel anytime. Instant access.</p>
+      <hr style='border-color:#21262d;margin:16px 0'>
+      <div style='text-align:left;display:inline-block'>
+        <p style='color:#3fb950;margin:4px 0'>✅ All 10 trading pairs</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Grade A/B/C signals with 6-strategy engine</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Pipnex-style live chart with TP/SL zones</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Multi-timeframe + Currency Strength</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Prop Firm tracker (8 firms)</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ AI Strategy Builder + Chart Analysis</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Telegram alerts + Trade Journal</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ MT5 Auto-trading bot</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Real-time data via Twelve Data</p>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # Payment button
+    st.subheader("💳 Pay with Pesapal")
+    st.caption("Secure payment — supports M-Pesa, Airtel Money, Visa, Mastercard and more")
+
+    pesapal_key = st.secrets.get("PESAPAL_CONSUMER_KEY","")
+    if not pesapal_key:
+        st.warning("⚠️ Payment system not configured yet. Contact admin to subscribe.")
+        st.info(f"📧 Email: sparroxhalo@gmail.com | Pay ${PLAN_PRICE}/month and get upgraded manually.")
+    else:
+        col1,col2 = st.columns(2)
+        with col1:
+            pay_name  = st.text_input("Full Name",  placeholder="John Doe")
+            pay_phone = st.text_input("Phone Number", placeholder="+254700000000")
+
+        with col2:
+            st.metric("Amount", f"${PLAN_PRICE}")
+            st.metric("Duration", "30 days")
+            st.metric("Payment Method", "M-Pesa/Card")
+
+        if st.button("🔐 Pay Now — Secure Checkout", type="primary",
+                     use_container_width=True):
+            if not pay_name or not pay_phone:
+                st.error("Please enter your name and phone number")
+            else:
+                with st.spinner("Connecting to Pesapal..."):
+                    pay_url, err = initiate_pesapal_payment(
+                        email, PLAN_PRICE, CURRENCY,
+                        f"Sparro FX AI Premium - {email}")
+                if pay_url:
+                    st.success("✅ Payment initiated! Click below to complete payment:")
+                    st.markdown(f"""
+                    <a href="{pay_url}" target="_blank">
+                    <button style='background:#0072ff;color:white;border:none;
+                      padding:14px 28px;border-radius:10px;font-size:16px;
+                      font-weight:700;cursor:pointer;width:100%;margin-top:10px'>
+                      💳 Complete Payment on Pesapal →
+                    </button></a>""", unsafe_allow_html=True)
+                    st.info("After payment, come back and click 'Check Payment Status' below")
+                    st.session_state["pending_payment"] = True
+                else:
+                    st.error(f"❌ Payment error: {err}")
+                    st.info(f"📧 Manual payment: Email sparroxhalo@gmail.com · Pay ${PLAN_PRICE} · Get upgraded within 24h")
+
+        # Check payment status
+        if st.session_state.get("pending_payment"):
+            st.divider()
+            if st.button("🔍 Check Payment Status", use_container_width=True):
+                with st.spinner("Checking..."):
+                    # Get latest order
+                    try:
+                        r = requests.get(
+                            sb_url("payments") + f"?user_email=eq.{email}&order=created_at.desc&limit=1",
+                            headers=get_headers(), timeout=8)
+                        payments = r.json()
+                        if payments:
+                            tracking_id = payments[0].get("order_tracking_id","")
+                            paid = check_payment_status(email, tracking_id)
+                            if paid:
+                                st.success("✅ Payment confirmed! You are now Premium.")
+                                st.session_state.user_tier="premium"
+                                st.session_state.pending_payment=False
+                                st.balloons(); st.rerun()
+                            else:
+                                st.warning("⏳ Payment not confirmed yet. Try again in a minute.")
+                        else:
+                            st.warning("No pending payment found.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    st.divider()
+    # Free trial offer for new users
+    if tier == "free" and not user_data.get("trial_started"):
+        st.subheader("🎁 Not ready to pay? Start Free Trial!")
+        st.markdown(f"""
+        <div style='background:#0a1a0a;border:2px solid #3fb950;border-radius:12px;
+          padding:20px;text-align:center'>
+          <h3 style='color:#3fb950;margin:0'>{TRIAL_DAYS}-Day FREE Trial</h3>
+          <p style='color:#e6edf3'>Full Premium access — no credit card needed</p>
+        </div>""", unsafe_allow_html=True)
+        if st.button(f"🚀 Start {TRIAL_DAYS}-Day Free Trial", type="primary",
+                     use_container_width=True):
+            ok = start_free_trial(email)
+            if ok:
+                st.success(f"🎉 Trial started! You have {TRIAL_DAYS} days of full Premium access.")
+                st.session_state.user_tier="trial"
+                st.rerun()
+            else:
+                st.error("Failed to start trial. Try again.")
+
 elif "Upgrade" in page:
     st.markdown("### 💎 Upgrade to Premium")
     st.markdown(
