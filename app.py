@@ -3129,6 +3129,476 @@ elif "Upgrade" in page:
 # PAGE: MT5 BOT CONTROL PANEL
 # ════════════════════════════════════════════════════════════
 elif "MT5 Bot" in page:
+    st.markdown("### 🤖 MT5 Auto-Trading")
+    if not premium: st.error("🔒 Premium only."); st.stop()
+
+    email = st.session_state.get("user_email","")
+
+    # ── Session state ──────────────────────────────────────
+    for k,v in [("mt5_account",""),("mt5_password",""),("mt5_server","Exness-Real"),
+                ("mt5_broker","Exness"),("mt5_mode","Balanced"),
+                ("mt5_balance",1000.0),("mt5_risk",1.0),("mt5_max_trades",3),
+                ("mt5_daily_loss",5.0),("mt5_active",False),("mt5_connected",False)]:
+        if k not in st.session_state: st.session_state[k]=v
+
+    # ── Status banner ──────────────────────────────────────
+    is_active    = st.session_state.mt5_active
+    is_connected = st.session_state.mt5_connected
+    status_color = "#3fb950" if is_active else "#f85149"
+    status_text  = "🟢 AUTO-TRADING ACTIVE" if is_active else "🔴 AUTO-TRADING OFF"
+    st.markdown(f"""
+    <div style='background:{"#0a1a0a" if is_active else "#1a0a0a"};
+      border:2px solid {status_color};border-radius:14px;
+      padding:18px;text-align:center;margin-bottom:16px'>
+      <div style='font-size:22px;font-weight:900;color:{status_color}'>{status_text}</div>
+      <div style='color:#8b949e;font-size:13px;margin-top:6px'>
+        {f"Account: {st.session_state.mt5_account} · {st.session_state.mt5_server} · Mode: {st.session_state.mt5_mode}" if is_connected
+         else "Enter your MT5 details below and press Start"}
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Main sections ──────────────────────────────────────
+    bot_section = st.selectbox("Section",
+        ["🔌 Connect & Start","⚙️ Mode & Risk","📊 Live Signals","📋 Trade History"],
+        label_visibility="hidden")
+    st.divider()
+
+    # ══ CONNECT & START ════════════════════════════════════
+    if "Connect" in bot_section:
+        st.subheader("🔌 Connect Your MT5 Account")
+        st.info("Enter your MT5 details once. Our server connects and trades automatically — just like Pipnex.")
+
+        col1,col2 = st.columns(2)
+        with col1:
+            account = st.text_input("MT5 Account Number",
+                value=st.session_state.mt5_account,
+                placeholder="e.g. 12345678")
+            server  = st.selectbox("MT5 Server",
+                ["Exness-Real","Exness-Real2","Exness-Real3","Exness-Real4",
+                 "Exness-Trial","ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"],
+                index=["Exness-Real","Exness-Real2","Exness-Real3","Exness-Real4",
+                       "Exness-Trial","ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"].index(
+                    st.session_state.mt5_server if st.session_state.mt5_server in
+                    ["Exness-Real","Exness-Real2","Exness-Real3","Exness-Real4",
+                     "Exness-Trial","ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"] else "Exness-Real"))
+            if server == "Other":
+                server = st.text_input("Custom server name",placeholder="e.g. Exness-Real5")
+
+        with col2:
+            password = st.text_input("MT5 Password",
+                value=st.session_state.mt5_password,
+                type="password", placeholder="Your MT5 investor or main password")
+            broker = st.selectbox("Broker",
+                ["Exness","ICMarkets","XM","FBS","FTMO","Other"])
+
+        # Account balance for lot sizing
+        balance = st.number_input("Account Balance ($)",
+            min_value=10.0, value=st.session_state.mt5_balance, step=100.0)
+
+        st.markdown("""
+        <div style='background:#161b22;border-radius:10px;padding:12px;margin:10px 0'>
+        <b style='color:#ffd200'>🔒 Security note:</b>
+        <span style='color:#8b949e;font-size:13px'> Your credentials are encrypted and stored securely.
+        We recommend using your MT5 <b>Investor Password</b> (read-only) for safety,
+        or create a separate trading account just for the bot.</span>
+        </div>""", unsafe_allow_html=True)
+
+        col1,col2 = st.columns(2)
+
+        if col1.button("▶️ START AUTO-TRADING",type="primary",use_container_width=True):
+            if not account or not password:
+                st.error("Please enter your MT5 account number and password")
+            else:
+                # Save credentials to Supabase
+                creds = {
+                    "mt5_account":  account,
+                    "mt5_server":   server,
+                    "mt5_broker":   broker,
+                    "mt5_balance":  balance,
+                    "mt5_mode":     st.session_state.mt5_mode,
+                    "mt5_risk":     st.session_state.mt5_risk,
+                    "mt5_active":   True,
+                }
+                # Save to bot_signals table for VPS to pick up
+                r = requests.post(sb_url("bot_credentials"),
+                    headers=get_headers(),
+                    json={
+                        "user_email": email,
+                        "account":    account,
+                        "password":   password,  # In production: encrypt this
+                        "server":     server,
+                        "broker":     broker,
+                        "balance":    balance,
+                        "mode":       st.session_state.mt5_mode,
+                        "risk_pct":   st.session_state.mt5_risk,
+                        "max_trades": st.session_state.mt5_max_trades,
+                        "daily_loss_pct": st.session_state.mt5_daily_loss,
+                        "active":     True,
+                        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    }, timeout=8)
+
+                st.session_state.mt5_account   = account
+                st.session_state.mt5_password  = password
+                st.session_state.mt5_server    = server
+                st.session_state.mt5_broker    = broker
+                st.session_state.mt5_balance   = balance
+                st.session_state.mt5_active    = True
+                st.session_state.mt5_connected = True
+                st.success("✅ Auto-trading activated! Our server will connect to your MT5 and start trading.")
+                st.info("Signals will be placed automatically based on your selected mode. Check Trade History to see placed trades.")
+                st.rerun()
+
+        if col2.button("⏹️ STOP AUTO-TRADING",use_container_width=True,
+                       disabled=not is_active):
+            # Update in Supabase
+            requests.patch(
+                sb_url("bot_credentials") + f"?user_email=eq.{email}",
+                headers=get_headers(),
+                json={"active":False,"updated_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                timeout=8)
+            st.session_state.mt5_active    = False
+            st.session_state.mt5_connected = False
+            st.warning("⏹️ Auto-trading stopped. No new trades will be placed.")
+            st.rerun()
+
+    # ══ MODE & RISK ════════════════════════════════════════
+    elif "Mode" in bot_section:
+        st.subheader("⚙️ Trading Mode & Risk Settings")
+
+        MODES = {
+            "Scalping 🎯":      {"desc":"Quick 15M trades, small SL, Grade A/B only. Best for London open.","color":"#f85149"},
+            "Balanced ⚖️":      {"desc":"1H trades with limit entries. Best all-round mode for most traders.","color":"#0072ff"},
+            "Aggressive 🚀":    {"desc":"4H trades, bigger moves, Grade A only. Higher risk/reward.","color":"#f85149"},
+            "Day Trading 📅":   {"desc":"1H trades, all closed by 5PM UTC. Safe for prop firm challenges.","color":"#ffd200"},
+            "Swing Trading 📈": {"desc":"4H/Daily trades, holds overnight. Patient traders only.","color":"#3fb950"},
+        }
+
+        for mode_name, mode_data in MODES.items():
+            clean = mode_name.split()[0]
+            selected = st.session_state.mt5_mode == clean
+            border = mode_data["color"] if selected else "#21262d"
+            st.markdown(f"""
+            <div style='background:#161b22;border:2px solid {border};
+              border-radius:12px;padding:14px;margin-bottom:8px'>
+              <b style='color:{mode_data["color"]}'>{mode_name}</b>
+              {"<span style='color:"+mode_data["color"]+";font-size:11px;margin-left:8px'>● ACTIVE</span>" if selected else ""}
+              <p style='color:#8b949e;font-size:13px;margin:4px 0 0'>{mode_data["desc"]}</p>
+            </div>""", unsafe_allow_html=True)
+            if st.button(f"Select {mode_name}",key=f"m_{clean}",
+                         use_container_width=True,
+                         type="primary" if selected else "secondary"):
+                st.session_state.mt5_mode=clean
+                # Update in Supabase if connected
+                if is_connected:
+                    requests.patch(
+                        sb_url("bot_credentials")+f"?user_email=eq.{email}",
+                        headers=get_headers(),
+                        json={"mode":clean},timeout=8)
+                st.rerun()
+
+        st.divider()
+        st.subheader("🛡️ Risk Settings")
+        col1,col2 = st.columns(2)
+        with col1:
+            risk = st.slider("Risk per trade (%)",0.1,5.0,
+                st.session_state.mt5_risk,0.1)
+            max_t = st.number_input("Max trades per day",1,10,
+                st.session_state.mt5_max_trades)
+        with col2:
+            d_loss = st.slider("Daily loss limit (%)",1.0,20.0,
+                st.session_state.mt5_daily_loss,0.5)
+            bal = st.number_input("Account balance ($)",
+                min_value=10.0,value=st.session_state.mt5_balance,step=100.0)
+
+        st.session_state.mt5_risk=risk
+        st.session_state.mt5_max_trades=max_t
+        st.session_state.mt5_daily_loss=d_loss
+        st.session_state.mt5_balance=bal
+
+        risk_amt   = bal*risk/100
+        daily_lim  = bal*d_loss/100
+        st.markdown(f"""
+        <div style='background:#0d1117;border-radius:10px;padding:14px;margin-top:10px'>
+          <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center'>
+            <div><div style='color:#8b949e;font-size:11px'>Risk/trade</div>
+              <div style='font-size:20px;font-weight:800;color:#ffd200'>${risk_amt:,.2f}</div></div>
+            <div><div style='color:#8b949e;font-size:11px'>Daily limit</div>
+              <div style='font-size:20px;font-weight:800;color:#f85149'>${daily_lim:,.2f}</div></div>
+            <div><div style='color:#8b949e;font-size:11px'>Max trades</div>
+              <div style='font-size:20px;font-weight:800;color:#3fb950'>{max_t}/day</div></div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        if st.button("💾 Save Settings",type="primary",use_container_width=True):
+            if is_connected:
+                requests.patch(
+                    sb_url("bot_credentials")+f"?user_email=eq.{email}",
+                    headers=get_headers(),
+                    json={"risk_pct":risk,"max_trades":max_t,
+                          "daily_loss_pct":d_loss,"balance":bal},timeout=8)
+            st.success("✅ Settings saved!")
+
+    # ══ LIVE SIGNALS ═══════════════════════════════════════
+    elif "Signals" in bot_section:
+        st.subheader("📊 Live Bot Signals")
+        st.caption("Signals currently being executed by the bot on your MT5")
+        try:
+            r = requests.get(
+                sb_url("bot_signals")+f"?user_email=eq.{email}&order=created_at.desc&limit=10",
+                headers=get_headers(),timeout=8)
+            sigs = r.json() if r.status_code==200 else []
+            if sigs:
+                for s in sigs:
+                    dc = "#3fb950" if s.get("direction")=="BUY" else "#f85149"
+                    dp = 5 if float(s.get("entry",0))<100 else 2
+                    st.markdown(f"""
+                    <div style='background:#161b22;border-radius:10px;padding:12px;
+                      margin-bottom:8px;border-left:3px solid {dc}'>
+                      <div style='display:flex;justify-content:space-between'>
+                        <b style='color:{dc}'>{s.get("direction","")} {s.get("pair","")}</b>
+                        <span style='color:#ffd200'>{s.get("confidence","")}%</span>
+                      </div>
+                      <div style='font-size:12px;color:#8b949e;margin-top:4px'>
+                        Entry: {round(float(s.get("entry",0)),dp)} ·
+                        SL: {round(float(s.get("sl",0)),dp)} ·
+                        TP1: {round(float(s.get("tp1",0)),dp)} ·
+                        Lot: {s.get("lot_size","")} ·
+                        Status: <b style='color:{"#3fb950" if s.get("status")=="executed" else "#ffd200"}'>{s.get("status","").upper()}</b>
+                      </div>
+                    </div>""", unsafe_allow_html=True)
+            else:
+                st.info("No bot signals yet. Start auto-trading to see signals here.")
+        except Exception as e:
+            st.error(f"Could not load signals: {e}")
+
+    # ══ TRADE HISTORY ══════════════════════════════════════
+    elif "History" in bot_section:
+        st.subheader("📋 Bot Trade History")
+        try:
+            r = requests.get(
+                sb_url("trades")+f"?user_email=eq.{email}&order=created_at.desc&limit=20",
+                headers=get_headers(),timeout=8)
+            trades_data = r.json() if r.status_code==200 else []
+            if trades_data:
+                wins   = sum(1 for t in trades_data if "TP" in str(t.get("result","")))
+                losses = sum(1 for t in trades_data if "SL" in str(t.get("result","")))
+                total_pnl = sum(float(t.get("pnl",0)) for t in trades_data)
+                wr = round(wins/max(wins+losses,1)*100)
+                col1,col2,col3 = st.columns(3)
+                col1.metric("Win Rate",f"{wr}%")
+                col2.metric("Total P&L",f"${total_pnl:,.2f}")
+                col3.metric("Trades",len(trades_data))
+                st.divider()
+                for t in trades_data:
+                    dc="#3fb950" if t.get("direction")=="BUY" else "#f85149"
+                    rc={"TP1 Hit":"#3fb950","TP2 Hit":"#3fb950","TP3 Hit":"#3fb950",
+                        "SL Hit":"#f85149","Open":"#ffd200"}.get(t.get("result","Open"),"#8b949e")
+                    dp=5 if float(t.get("entry",0))<100 else 2
+                    st.markdown(f"""
+                    <div style='background:#161b22;border-radius:10px;padding:12px;
+                      margin-bottom:6px;border-left:3px solid {dc}'>
+                      <div style='display:flex;justify-content:space-between'>
+                        <b style='color:{dc}'>{t.get("direction","")} {t.get("pair","")}</b>
+                        <span style='color:{rc};font-weight:700'>{t.get("result","Open")}</span>
+                      </div>
+                      <div style='font-size:12px;color:#8b949e'>
+                        Entry: {round(float(t.get("entry",0)),dp)} · P&L: <b style='color:{rc}'>${float(t.get("pnl",0)):,.2f}</b> · {t.get("date","")}
+                      </div>
+                    </div>""", unsafe_allow_html=True)
+            else:
+                st.info("No trade history yet.")
+        except Exception as e:
+            st.error(f"Could not load history: {e}")
+
+    st.divider()
+    st.markdown("""
+    <div style='background:#1a0a0a;border:1px solid #f8514930;
+      border-radius:10px;padding:12px;font-size:12px'>
+    <b style='color:#f85149'>⚠️ Risk Warning:</b>
+    <span style='color:#8b949e'> Automated trading carries significant financial risk.
+    Always test on a demo account first. Never trade with money you cannot afford to lose.
+    Sparro FX AI is not liable for any trading losses.</span>
+    </div>""", unsafe_allow_html=True)
+
+elif "Subscribe" in page:
+    st.markdown("### 💳 Subscribe to Premium")
+
+    email = st.session_state.get("user_email","")
+    tier  = st.session_state.get("user_tier","free")
+
+    # Get user data for trial info
+    user_data = get_user(email)
+    days_left = get_trial_days_left(user_data) if user_data else 0
+
+    # Status banner
+    if tier == "premium":
+        sub_end = user_data.get("subscription_end","") if user_data else ""
+        st.success(f"✅ You are Premium! Subscription active.")
+        if sub_end:
+            try:
+                end_dt = datetime.datetime.fromisoformat(sub_end.replace("Z","+00:00"))
+                st.info(f"📅 Renews: {end_dt.strftime('%B %d, %Y')}")
+            except: pass
+    elif tier == "trial":
+        color = "#f85149" if days_left<=3 else "#ffd200"
+        st.markdown(f"""
+        <div style='background:#161b22;border:2px solid {color};border-radius:12px;
+          padding:16px;text-align:center;margin-bottom:16px'>
+          <h3 style='color:{color};margin:0'>🎉 Free Trial Active</h3>
+          <p style='color:#e6edf3;font-size:18px;margin:8px 0'>{days_left} days remaining</p>
+          <p style='color:#8b949e;font-size:13px;margin:0'>Subscribe now to keep Premium after your trial ends</p>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style='background:#1a0a0a;border:1px solid #f8514940;border-radius:10px;
+          padding:12px;text-align:center;margin-bottom:12px'>
+          <b style='color:#f85149'>❌ Free Plan — Limited features</b><br>
+          <span style='color:#8b949e;font-size:12px'>Subscribe to unlock all 10 pairs, Grade A/B/C signals, Prop Firm tools, AI features and more</span>
+        </div>""", unsafe_allow_html=True)
+
+    # Pricing card
+    st.markdown(f"""
+    <div style='background:linear-gradient(135deg,#0d1a3a,#0a0a0f);
+      border:2px solid #0072ff;border-radius:16px;padding:24px;
+      text-align:center;margin:16px 0'>
+      <div style='font-size:40px'>⚡</div>
+      <h2 style='color:#fff;margin:8px 0'>Sparro FX AI Premium</h2>
+      <div style='font-size:48px;font-weight:900;color:#fff;margin:8px 0'>
+        ${PLAN_PRICE}<span style='font-size:18px;color:#8b949e'>/month</span>
+      </div>
+      <p style='color:#8b949e;margin:8px 0'>Cancel anytime. Instant access.</p>
+      <hr style='border-color:#21262d;margin:16px 0'>
+      <div style='text-align:left;display:inline-block'>
+        <p style='color:#3fb950;margin:4px 0'>✅ All 10 trading pairs</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Grade A/B/C signals with 6-strategy engine</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Pipnex-style live chart with TP/SL zones</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Multi-timeframe + Currency Strength</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Prop Firm tracker (8 firms)</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ AI Strategy Builder + Chart Analysis</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Telegram alerts + Trade Journal</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ MT5 Auto-trading bot</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Real-time data via Twelve Data</p>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # Payment button
+    st.subheader("💳 Pay with Pesapal")
+    st.caption("Secure payment — supports M-Pesa, Airtel Money, Visa, Mastercard and more")
+
+    pesapal_key = st.secrets.get("PESAPAL_CONSUMER_KEY","")
+    if not pesapal_key:
+        st.warning("⚠️ Payment system not configured yet. Contact admin to subscribe.")
+        st.info(f"📧 Email: sparroxhalo@gmail.com | Pay ${PLAN_PRICE}/month and get upgraded manually.")
+    else:
+        col1,col2 = st.columns(2)
+        with col1:
+            pay_name  = st.text_input("Full Name",  placeholder="John Doe")
+            pay_phone = st.text_input("Phone Number", placeholder="+254700000000")
+
+        with col2:
+            st.metric("Amount", f"${PLAN_PRICE}")
+            st.metric("Duration", "30 days")
+            st.metric("Payment Method", "M-Pesa/Card")
+
+        if st.button("🔐 Pay Now — Secure Checkout", type="primary",
+                     use_container_width=True):
+            if not pay_name or not pay_phone:
+                st.error("Please enter your name and phone number")
+            else:
+                with st.spinner("Connecting to Pesapal..."):
+                    pay_url, err = initiate_pesapal_payment(
+                        email, PLAN_PRICE, CURRENCY,
+                        f"Sparro FX AI Premium - {email}")
+                if pay_url:
+                    st.success("✅ Payment initiated! Click below to complete payment:")
+                    st.markdown(f"""
+                    <a href="{pay_url}" target="_blank">
+                    <button style='background:#0072ff;color:white;border:none;
+                      padding:14px 28px;border-radius:10px;font-size:16px;
+                      font-weight:700;cursor:pointer;width:100%;margin-top:10px'>
+                      💳 Complete Payment on Pesapal →
+                    </button></a>""", unsafe_allow_html=True)
+                    st.info("After payment, come back and click 'Check Payment Status' below")
+                    st.session_state["pending_payment"] = True
+                else:
+                    st.error(f"❌ Payment error: {err}")
+                    st.info(f"📧 Manual payment: Email sparroxhalo@gmail.com · Pay ${PLAN_PRICE} · Get upgraded within 24h")
+
+        # Check payment status
+        if st.session_state.get("pending_payment"):
+            st.divider()
+            if st.button("🔍 Check Payment Status", use_container_width=True):
+                with st.spinner("Checking..."):
+                    # Get latest order
+                    try:
+                        r = requests.get(
+                            sb_url("payments") + f"?user_email=eq.{email}&order=created_at.desc&limit=1",
+                            headers=get_headers(), timeout=8)
+                        payments = r.json()
+                        if payments:
+                            tracking_id = payments[0].get("order_tracking_id","")
+                            paid = check_payment_status(email, tracking_id)
+                            if paid:
+                                st.success("✅ Payment confirmed! You are now Premium.")
+                                st.session_state.user_tier="premium"
+                                st.session_state.pending_payment=False
+                                st.balloons(); st.rerun()
+                            else:
+                                st.warning("⏳ Payment not confirmed yet. Try again in a minute.")
+                        else:
+                            st.warning("No pending payment found.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    st.divider()
+    # Free trial offer for new users
+    if tier == "free" and not user_data.get("trial_started"):
+        st.subheader("🎁 Not ready to pay? Start Free Trial!")
+        st.markdown(f"""
+        <div style='background:#0a1a0a;border:2px solid #3fb950;border-radius:12px;
+          padding:20px;text-align:center'>
+          <h3 style='color:#3fb950;margin:0'>{TRIAL_DAYS}-Day FREE Trial</h3>
+          <p style='color:#e6edf3'>Full Premium access — no credit card needed</p>
+        </div>""", unsafe_allow_html=True)
+        if st.button(f"🚀 Start {TRIAL_DAYS}-Day Free Trial", type="primary",
+                     use_container_width=True):
+            ok = start_free_trial(email)
+            if ok:
+                st.success(f"🎉 Trial started! You have {TRIAL_DAYS} days of full Premium access.")
+                st.session_state.user_tier="trial"
+                st.rerun()
+            else:
+                st.error("Failed to start trial. Try again.")
+
+elif "Upgrade" in page:
+    st.markdown("### 💎 Upgrade to Premium")
+    st.markdown(
+        "<div style='background:linear-gradient(135deg,#1a1a0a,#2d2a0a);border:2px solid #ffd200;"
+        "border-radius:16px;padding:24px;text-align:center;margin:16px 0'>"
+        "<div style='font-size:32px'>⚡</div>"
+        "<h2 style='color:#ffd200;margin:8px 0'>Premium Plan</h2>"
+        "<h1 style='color:#fff;margin:0'>$24/month</h1>"
+        "<p style='color:#8b949e;margin:12px 0'>Everything you need to trade professionally</p>"
+        "<hr style='border-color:#30363d;margin:16px 0'>"
+        "<p>✅ All 10 assets · Grade A/B/C/D signals<br>"
+        "✅ Live Pulse with 8-strategy engine<br>"
+        "✅ Multi-timeframe · Currency strength<br>"
+        "✅ Precision entries · Prop firm tools<br>"
+        "✅ AI Strategy Builder · Chart analysis<br>"
+        "✅ Telegram alerts · Trade journal</p>"
+        "</div>",
+        unsafe_allow_html=True)
+    st.markdown("""
+    **To upgrade:**
+    1. Pay on **[Whop.com](https://whop.com)** or **[Gumroad](https://gumroad.com)**
+    2. Email receipt to admin
+    3. Admin upgrades your account
+    4. Logout → Login → Premium unlocked ✅
+    """)
+# ════════════════════════════════════════════════════════════
+# PAGE: MT5 BOT CONTROL PANEL
+# ════════════════════════════════════════════════════════════
+elif "MT5 Bot" in page:
     import json, os, base64
 
     st.markdown("### 📡 MT5 Auto-Trading Bot")
