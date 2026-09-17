@@ -1251,7 +1251,7 @@ page=selected_tab
 st.markdown("<div class='content-area'>",unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════
-# PIPNEX-STYLE CHART FUNCTION
+# LIVE CHART FUNCTION
 # ════════════════════════════════════════════════════════════
 # ════════════════════════════════════════════════════════════
 # ACCOUNT-BASED TRADE CALCULATOR
@@ -1384,264 +1384,288 @@ def show_trade_calculator(sig):
       </div>
     </div>""", unsafe_allow_html=True)
 
-def show_pipnex_chart(symbol, pair_name, sig):
-    """
-    Shows a Pipnex-style chart with:
-    - Candlesticks
-    - TP zone (green shaded)
-    - SL zone (red shaded)
-    - Entry line (yellow)
-    - SMC zones: Order Block, Premium/Discount, BOS
-    - Timeframe tabs: 15M, 30M, 1H, 4H, Daily
-    """
+def show_live_chart(symbol, pair_name, sig):
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    # Timeframe selector
+    # ── Timeframe selector ────────────────────────────────
+    tf_options = [("15M","15m","5d"),("30M","30m","10d"),
+                  ("1H","1h","1mo"),("4H","1h","2mo"),("Daily","1d","6mo")]
+    if "chart_tf" not in st.session_state: st.session_state.chart_tf="1H"
+
     tf_cols = st.columns(5)
-    tf_options = [("15M","15m","5d"),("30M","30m","10d"),("1H","1h","1mo"),("4H","1h","2mo"),("Daily","1d","6mo")]
-    if "chart_tf" not in st.session_state: st.session_state.chart_tf = "1H"
-
     for i,(label,_,_) in enumerate(tf_options):
-        if tf_cols[i].button(label,
-            use_container_width=True,
+        if tf_cols[i].button(label, use_container_width=True,
             type="primary" if st.session_state.chart_tf==label else "secondary"):
-            st.session_state.chart_tf=label
-            st.rerun()
+            st.session_state.chart_tf=label; st.rerun()
 
-    # Get selected timeframe data
     sel_tf = next((t for t in tf_options if t[0]==st.session_state.chart_tf), tf_options[2])
     label,interval,period = sel_tf
 
     with st.spinner(f"Loading {label} chart..."):
         df = fetch(symbol, period, interval)
+    if df is None or len(df)<10:
+        st.warning("Chart data unavailable."); return
 
-    if df is None or len(df) < 10:
-        st.warning("Chart data unavailable.")
-        return
+    # Use last 100 candles — more context like MT5
+    df    = df.iloc[-100:]
+    close = df["Close"]; high = df["High"]
+    low   = df["Low"]
+    open_ = df["Open"] if "Open" in df.columns else close.shift(1).fillna(close)
+    dates = df.index
+    price = float(close.iloc[-1])
+    dp    = 5 if price<100 else 2
 
-    # Use last 80 candles for clean display
-    df = df.iloc[-80:]
-
-    close  = df["Close"]
-    high   = df["High"]
-    low    = df["Low"]
-    open_  = df["Open"] if "Open" in df.columns else close.shift(1)
-    dates  = df.index
-    price  = float(close.iloc[-1])
-
-    # ── Calculate indicators ─────────────────────────────
+    # ── Indicators ────────────────────────────────────────
     ema20  = close.ewm(span=20).mean()
     ema50  = close.ewm(span=50).mean()
-
-    # ATR
-    tr = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)
-    atr_val = float(tr.rolling(14).mean().iloc[-1])
-
-    # S/R zones
+    tr     = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)
+    atr_val= float(tr.rolling(14).mean().iloc[-1])
     resistance = float(high.rolling(20).max().iloc[-1])
     support    = float(low.rolling(20).min().iloc[-1])
-    mid_zone   = (resistance + support) / 2
-    premium    = resistance
-    discount   = support
+    mid_zone   = (resistance+support)/2
 
-    # Order Block detection (last bearish before bullish or vice versa)
-    ob_high = ob_low = ob_type = None
+    # OB detection
+    ob_high=ob_low=ob_type=None
     try:
-        closes_arr = close.values; opens_arr = open_.values
-        highs_arr  = high.values;  lows_arr  = low.values
-        for i in range(len(closes_arr)-2, max(len(closes_arr)-15, 2), -1):
-            if closes_arr[i] < opens_arr[i]:  # bearish candle
-                if i+2 < len(closes_arr) and closes_arr[i+2] > highs_arr[i]:
-                    ob_high = highs_arr[i]; ob_low = lows_arr[i]; ob_type = "Bullish OB"; break
-            elif closes_arr[i] > opens_arr[i]:  # bullish candle
-                if i+2 < len(closes_arr) and closes_arr[i+2] < lows_arr[i]:
-                    ob_high = highs_arr[i]; ob_low = lows_arr[i]; ob_type = "Bearish OB"; break
+        ca=close.values; oa=open_.values; ha=high.values; la=low.values
+        for i in range(len(ca)-2, max(len(ca)-20,2), -1):
+            if ca[i]<oa[i] and i+2<len(ca) and ca[i+2]>ha[i]:
+                ob_high=ha[i]; ob_low=la[i]; ob_type="Bullish OB"; break
+            elif ca[i]>oa[i] and i+2<len(ca) and ca[i+2]<la[i]:
+                ob_high=ha[i]; ob_low=la[i]; ob_type="Bearish OB"; break
     except: pass
 
-    # BOS level
-    bos_level = float(high.iloc[-20:-3].max()) if sig.get("direction")=="BUY" else float(low.iloc[-20:-3].min())
+    bos_level=float(high.iloc[-20:-3].max()) if sig.get("direction")=="BUY" else float(low.iloc[-20:-3].min())
 
-    # ── Build chart ───────────────────────────────────────
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-        row_heights=[0.75, 0.25], vertical_spacing=0.02)
+    entry=sig.get("entry",price); sl=sig.get("sl",price)
+    tp1=sig.get("tp1",price); tp2=sig.get("tp2",price); tp3=sig.get("tp3",price)
+    is_buy="BUY" in sig.get("direction","")
+    dir_color="#26a69a" if is_buy else "#ef5350"
 
-    # Candlesticks
+    # ── Build chart — MT5 style ───────────────────────────
+    fig = make_subplots(
+        rows=3, cols=1, shared_xaxes=True,
+        row_heights=[0.65, 0.15, 0.20],
+        vertical_spacing=0.01,
+        subplot_titles=("","",""))
+
+    # ── 1. CANDLESTICKS — thick, bright, MT5 style ────────
     fig.add_trace(go.Candlestick(
-        x=dates, open=open_, high=high, low=low, close=close,
+        x=dates,
+        open=open_, high=high, low=low, close=close,
         name="Price",
-        increasing_line_color="#26a69a",
-        decreasing_line_color="#ef5350",
-        increasing_fillcolor="#26a69a",
-        decreasing_fillcolor="#ef5350",
+        increasing=dict(
+            line=dict(color="#26a69a", width=1),
+            fillcolor="#26a69a"),
+        decreasing=dict(
+            line=dict(color="#ef5350", width=1),
+            fillcolor="#ef5350"),
+        whiskerwidth=1,
     ), row=1, col=1)
 
-    # EMA lines
-    fig.add_trace(go.Scatter(x=dates, y=ema20, name="EMA20",
-        line=dict(color="#f0b90b", width=1, dash="dot")), row=1, col=1)
-    fig.add_trace(go.Scatter(x=dates, y=ema50, name="EMA50",
-        line=dict(color="#2196f3", width=1, dash="dot")), row=1, col=1)
+    # ── 2. EMA lines ──────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=dates, y=ema20, name="EMA 20",
+        line=dict(color="#f59e0b", width=1.5),
+        opacity=0.9), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=dates, y=ema50, name="EMA 50",
+        line=dict(color="#3b82f6", width=1.5),
+        opacity=0.9), row=1, col=1)
 
-    # ── SMC Zones ─────────────────────────────────────────
-    # Premium zone (above mid)
-    fig.add_hrect(y0=mid_zone, y1=premium*1.001,
-        fillcolor="rgba(239,83,80,0.08)", line_width=0,
-        annotation_text="PREMIUM", annotation_position="top left",
-        annotation_font_color="#ef5350", annotation_font_size=10, row=1, col=1)
+    # ── 3. SMC ZONES ──────────────────────────────────────
+    # Premium zone
+    fig.add_hrect(y0=mid_zone, y1=resistance*1.0005,
+        fillcolor="rgba(239,83,80,0.06)", line_width=0,
+        annotation_text="PREMIUM ▲", annotation_position="top left",
+        annotation_font=dict(color="#ef535080",size=9), row=1, col=1)
+    # Discount zone
+    fig.add_hrect(y0=support*0.9995, y1=mid_zone,
+        fillcolor="rgba(38,166,154,0.06)", line_width=0,
+        annotation_text="DISCOUNT ▼", annotation_position="bottom left",
+        annotation_font=dict(color="#26a69a80",size=9), row=1, col=1)
 
-    # Discount zone (below mid)
-    fig.add_hrect(y0=discount*0.999, y1=mid_zone,
-        fillcolor="rgba(38,166,154,0.08)", line_width=0,
-        annotation_text="DISCOUNT", annotation_position="bottom left",
-        annotation_font_color="#26a69a", annotation_font_size=10, row=1, col=1)
-
-    # Order Block zone
+    # Order Block — filled rectangle
     if ob_high and ob_low:
-        ob_color = "rgba(38,166,154,0.15)" if ob_type=="Bullish OB" else "rgba(239,83,80,0.15)"
-        ob_border = "#26a69a" if ob_type=="Bullish OB" else "#ef5350"
+        ob_c = "rgba(38,166,154,0.18)" if ob_type=="Bullish OB" else "rgba(239,83,80,0.18)"
+        ob_b = "#26a69a" if ob_type=="Bullish OB" else "#ef5350"
         fig.add_hrect(y0=ob_low, y1=ob_high,
-            fillcolor=ob_color,
-            line_color=ob_border, line_width=1, line_dash="dash",
-            annotation_text=f"🟦 {ob_type} (Structure)",
+            fillcolor=ob_c, line_color=ob_b, line_width=1.5,
+            annotation_text=f" {ob_type} ",
             annotation_position="right",
-            annotation_font_color=ob_border, annotation_font_size=10, row=1, col=1)
+            annotation_font=dict(color=ob_b,size=10,family="monospace"),
+            row=1, col=1)
 
     # BOS line
-    bos_color = "#26a69a" if sig.get("direction")=="BUY" else "#ef5350"
-    fig.add_hline(y=bos_level, line_color=bos_color, line_width=1,
-        line_dash="dot",
-        annotation_text=f"BOS {'↑' if sig.get('direction')=='BUY' else '↓'}",
+    bos_c="#26a69a" if is_buy else "#ef5350"
+    fig.add_hline(y=bos_level,
+        line=dict(color=bos_c,width=1,dash="dash"),
+        annotation_text=f" BOS {'↑' if is_buy else '↓'} ",
         annotation_position="left",
-        annotation_font_color=bos_color, annotation_font_size=10,
+        annotation_font=dict(color=bos_c,size=10),
         row=1, col=1)
 
-    # ── Trade Levels ──────────────────────────────────────
-    entry = sig.get("entry", price)
-    sl    = sig.get("sl",    price)
-    tp1   = sig.get("tp1",   price)
-    tp2   = sig.get("tp2",   price)
-    tp3   = sig.get("tp3",   price)
-    dp    = 5 if price < 100 else 2
-
-    is_buy = "BUY" in sig.get("direction","")
-
-    # SL zone (red shaded from entry to SL)
-    fig.add_hrect(
-        y0=min(entry, sl), y1=max(entry, sl),
-        fillcolor="rgba(239,83,80,0.20)",
-        line_color="#ef5350", line_width=1,
-        annotation_text=f"🛑 SL {round(sl,dp)}",
+    # ── 4. TRADE LEVELS — bold and clear ─────────────────
+    # SL zone — red filled
+    fig.add_hrect(y0=min(entry,sl), y1=max(entry,sl),
+        fillcolor="rgba(239,83,80,0.25)",
+        line_color="#ef5350", line_width=2,
+        annotation_text=f" 🛑 SL  {round(sl,dp)} ",
         annotation_position="right",
-        annotation_font_color="#ef5350", annotation_font_size=11,
+        annotation_font=dict(color="#ef5350",size=12,family="monospace"),
         row=1, col=1)
 
-    # TP1 zone (light green)
-    fig.add_hrect(
-        y0=min(entry,tp1), y1=max(entry,tp1),
-        fillcolor="rgba(38,166,154,0.20)",
-        line_color="#26a69a", line_width=1,
-        annotation_text=f"✅ TP1 {round(tp1,dp)}",
+    # TP zones — green filled (TP1 brightest)
+    fig.add_hrect(y0=min(entry,tp1), y1=max(entry,tp1),
+        fillcolor="rgba(38,166,154,0.25)",
+        line_color="#26a69a", line_width=2,
+        annotation_text=f" TP1  {round(tp1,dp)} ",
         annotation_position="right",
-        annotation_font_color="#26a69a", annotation_font_size=11,
+        annotation_font=dict(color="#26a69a",size=12,family="monospace"),
         row=1, col=1)
-
-    # TP2 zone (medium green)
-    fig.add_hrect(
-        y0=min(tp1,tp2), y1=max(tp1,tp2),
-        fillcolor="rgba(38,166,154,0.12)",
+    fig.add_hrect(y0=min(tp1,tp2), y1=max(tp1,tp2),
+        fillcolor="rgba(38,166,154,0.14)",
         line_color="#26a69a", line_width=1, line_dash="dot",
-        annotation_text=f"✅ TP2 {round(tp2,dp)}",
+        annotation_text=f" TP2  {round(tp2,dp)} ",
         annotation_position="right",
-        annotation_font_color="#26a69a", annotation_font_size=10,
+        annotation_font=dict(color="#26a69a",size=11),
+        row=1, col=1)
+    fig.add_hrect(y0=min(tp2,tp3), y1=max(tp2,tp3),
+        fillcolor="rgba(38,166,154,0.07)",
+        line_color="#26a69a80", line_width=1, line_dash="dot",
+        annotation_text=f" TP3  {round(tp3,dp)} ",
+        annotation_position="right",
+        annotation_font=dict(color="#26a69a",size=10),
         row=1, col=1)
 
-    # TP3 zone (faint green)
-    fig.add_hrect(
-        y0=min(tp2,tp3), y1=max(tp2,tp3),
-        fillcolor="rgba(38,166,154,0.06)",
-        line_color="#26a69a", line_width=1, line_dash="dot",
-        annotation_text=f"✅ TP3 {round(tp3,dp)}",
-        annotation_position="right",
-        annotation_font_color="#26a69a", annotation_font_size=10,
-        row=1, col=1)
-
-    # Entry line (yellow — most prominent)
+    # Entry line — thick yellow
     fig.add_hline(y=entry,
-        line_color="#f0b90b", line_width=2,
-        annotation_text=f"📍 ENTRY {round(entry,dp)}",
+        line=dict(color="#f59e0b",width=2.5),
+        annotation_text=f" ► ENTRY  {round(entry,dp)} ",
         annotation_position="left",
-        annotation_font_color="#f0b90b", annotation_font_size=12,
+        annotation_font=dict(color="#f59e0b",size=13,family="monospace"),
         row=1, col=1)
 
-    # Entry arrow on latest candle
-    arrow_y = float(low.iloc[-1]) - atr_val*0.3 if is_buy else float(high.iloc[-1]) + atr_val*0.3
-    arrow_sym = "triangle-up" if is_buy else "triangle-down"
-    arrow_col = "#26a69a" if is_buy else "#ef5350"
+    # Current price line
+    fig.add_hline(y=price,
+        line=dict(color="#ffffff",width=1,dash="dot"),
+        annotation_text=f" {round(price,dp)} ",
+        annotation_position="right",
+        annotation_font=dict(color="#ffffff",size=11),
+        row=1, col=1)
+
+    # Signal arrow — big and visible
+    arrow_y = float(low.iloc[-3:].min()) - atr_val*0.8 if is_buy else float(high.iloc[-3:].max()) + atr_val*0.8
     fig.add_trace(go.Scatter(
         x=[dates[-1]], y=[arrow_y],
         mode="markers+text",
-        marker=dict(symbol=arrow_sym, size=16, color=arrow_col),
-        text=[sig.get("direction","")],
+        marker=dict(
+            symbol="triangle-up" if is_buy else "triangle-down",
+            size=20, color=dir_color,
+            line=dict(color="#fff",width=1)),
+        text=[f"  {'BUY' if is_buy else 'SELL'}"],
         textposition="top center" if is_buy else "bottom center",
-        textfont=dict(color=arrow_col, size=11),
-        name="Signal", showlegend=False
+        textfont=dict(color=dir_color,size=13,family="monospace"),
+        name="Signal", showlegend=False,
     ), row=1, col=1)
 
-    # ── Volume bars ───────────────────────────────────────
+    # ── 5. RSI PANEL ─────────────────────────────────────
+    delta=close.diff(); g=delta.where(delta>0,0).rolling(14).mean()
+    l_=(-delta.where(delta<0,0)).rolling(14).mean()
+    rsi_line=100-(100/(1+g/l_.replace(0,1e-9)))
+    fig.add_trace(go.Scatter(
+        x=dates, y=rsi_line, name="RSI",
+        line=dict(color="#a78bfa",width=1.5)), row=2, col=1)
+    fig.add_hline(y=70, line=dict(color="#ef535060",width=1,dash="dot"), row=2, col=1)
+    fig.add_hline(y=30, line=dict(color="#26a69a60",width=1,dash="dot"), row=2, col=1)
+    fig.add_hrect(y0=70,y1=100,fillcolor="rgba(239,83,80,0.05)",line_width=0,row=2,col=1)
+    fig.add_hrect(y0=0,y1=30,fillcolor="rgba(38,166,154,0.05)",line_width=0,row=2,col=1)
+
+    # ── 6. VOLUME BARS ────────────────────────────────────
     if "Volume" in df.columns:
-        vol_colors = ["#26a69a" if c >= o else "#ef5350"
-                      for c,o in zip(close.values, open_.values)]
+        vol_c=["#26a69a" if c>=o else "#ef5350" for c,o in zip(close.values,open_.values)]
         fig.add_trace(go.Bar(
             x=dates, y=df["Volume"],
-            marker_color=vol_colors, name="Volume", opacity=0.6
-        ), row=2, col=1)
+            marker_color=vol_c, name="Volume",
+            opacity=0.7), row=3, col=1)
+    else:
+        # MACD as fallback
+        macd_l=close.ewm(12).mean()-close.ewm(26).mean()
+        macd_s=macd_l.ewm(9).mean()
+        macd_h=macd_l-macd_s
+        bar_c=["#26a69a" if v>=0 else "#ef5350" for v in macd_h.values]
+        fig.add_trace(go.Bar(x=dates,y=macd_h,marker_color=bar_c,name="MACD Hist",opacity=0.8),row=3,col=1)
+        fig.add_trace(go.Scatter(x=dates,y=macd_l,line=dict(color="#f59e0b",width=1),name="MACD"),row=3,col=1)
+        fig.add_trace(go.Scatter(x=dates,y=macd_s,line=dict(color="#3b82f6",width=1),name="Signal"),row=3,col=1)
 
-    # ── Layout ────────────────────────────────────────────
-    dir_color = "#26a69a" if is_buy else "#ef5350"
-    grade_emoji = {"A":"🏆","B":"✅","C":"⚠️"}.get(sig.get("grade",""),"")
-
+    # ── LAYOUT — dark MT5 theme ───────────────────────────
+    grade_emoji={"A":"★","B":"◆","C":"●"}.get(sig.get("grade",""),"")
     fig.update_layout(
         title=dict(
-            text=f"{grade_emoji} {sig.get('direction','')} {pair_name} — Grade {sig.get('grade','')} {sig.get('confidence','')}% | {label}",
-            font=dict(color=dir_color, size=13),
-        ),
+            text=f"{grade_emoji} {sig.get('direction','')}  {pair_name}  |  Grade {sig.get('grade','')}  {sig.get('confidence','')}%  |  {label}",
+            font=dict(color=dir_color, size=14, family="monospace"),
+            x=0.01),
         plot_bgcolor="#131722",
-        paper_bgcolor="#131722",
-        font=dict(color="#d1d4dc", size=10),
+        paper_bgcolor="#0d1117",
+        font=dict(color="#d1d4dc", size=11, family="monospace"),
         xaxis=dict(
-            gridcolor="#1e222d", rangeslider_visible=False,
-            showgrid=True, gridwidth=1,
-            type="category", nticks=6,
+            rangeslider_visible=False,
+            gridcolor="#1e222d", gridwidth=1,
+            showgrid=True, zeroline=False,
             showticklabels=True,
+            tickfont=dict(size=9),
+            type="category", nticks=8,
         ),
-        xaxis2=dict(gridcolor="#1e222d", showgrid=True, nticks=4),
-        yaxis=dict(gridcolor="#1e222d", showgrid=True, side="right",
-            showticklabels=True),
-        yaxis2=dict(gridcolor="#1e222d", showgrid=True, side="right"),
-        height=480,
-        margin=dict(l=0, r=80, t=40, b=20),
+        xaxis2=dict(gridcolor="#1e222d",showgrid=True,showticklabels=False),
+        xaxis3=dict(gridcolor="#1e222d",showgrid=True,showticklabels=True,tickfont=dict(size=9)),
+        yaxis=dict(
+            gridcolor="#1e222d", gridwidth=1,
+            showgrid=True, zeroline=False,
+            side="right", tickfont=dict(size=10),
+            tickformat=f".{dp}f",
+        ),
+        yaxis2=dict(gridcolor="#1e222d",showgrid=True,side="right",
+            range=[0,100],tickvals=[30,50,70],tickfont=dict(size=9),title="RSI"),
+        yaxis3=dict(gridcolor="#1e222d",showgrid=True,side="right",
+            tickfont=dict(size=9),title="Vol"),
+        height=580,
+        margin=dict(l=0, r=90, t=45, b=10),
         legend=dict(
-            bgcolor="#131722", bordercolor="#2a2e39",
-            borderwidth=1, x=0, y=1.0,
-            font=dict(size=9), orientation="h"
+            bgcolor="rgba(13,17,23,0.8)",
+            bordercolor="#30363d", borderwidth=1,
+            x=0.01, y=0.99,
+            font=dict(size=10,family="monospace"),
+            orientation="h",
         ),
         hovermode="x unified",
-        showlegend=True,
+        hoverlabel=dict(
+            bgcolor="#1e222d",
+            font_size=11,
+            font_family="monospace"),
+        dragmode="zoom",
     )
+
+    # Remove subplot title gaps
+    fig.update_annotations(font_size=10)
 
     try:
         st.plotly_chart(fig, use_container_width=True, config={
-            "displayModeBar": False,
+            "displayModeBar": True,
+            "modeBarButtonsToRemove": ["lasso2d","select2d","autoScale2d"],
             "scrollZoom": True,
             "responsive": True,
+            "toImageButtonOptions": {
+                "format":"png","filename":f"Sparro_{pair_name}_{label}",
+                "height":600,"width":1200,"scale":2
+            },
         })
     except Exception as e:
         st.error(f"Chart error: {e}")
-        # Fallback: show price table
-        st.dataframe(df[["Open","High","Low","Close"]].tail(20).round(5),
+        st.dataframe(df[["Open","High","Low","Close"]].tail(20).round(dp),
             use_container_width=True)
 
-    # ── AI Analysis tab (like Pipnex) ─────────────────────
+    # ── AI Analysis tab ───────────────────────────────────────
     chart_tab1, chart_tab2 = st.tabs(["📊 Chart Analysis", "🤖 AI Analysis"])
     with chart_tab1:
         col1,col2,col3 = st.columns(3)
@@ -1684,7 +1708,7 @@ Price zone: {price_zone} | Support: {round(support,dp)} | Resistance: {round(res
 Order Block: {f"{ob_type} at {round(ob_low,dp)}-{round(ob_high,dp)}" if ob_high else "None detected"}
 MTF: {sig.get('mtf_agree','—')} | RSI: {sig.get('rsi','—')}
 
-Write a SHORT professional analysis (max 150 words) like Pipnex AI:
+Write a SHORT professional technical analysis (max 150 words):
 - Is this a good setup?
 - What is the thesis?
 - Key level to watch
@@ -1939,7 +1963,7 @@ elif "Pulse" in page:
         if active_sigs:
             top_sig = active_sigs[0]
             with st.expander(f"📈 View Chart — {top_sig['pair']} {top_sig['direction']} Grade {top_sig.get('grade','')}"):
-                show_pipnex_chart(top_sig["sym"], top_sig["pair"], top_sig)
+                show_live_chart(top_sig["sym"], top_sig["pair"], top_sig)
 
         # Entry guide
         if active_sigs:
@@ -1985,7 +2009,7 @@ elif "Watchlist" in page:
                 sig=analyse_pair(sym,name)
             if sig and sig["direction"]!="WAIT":
                 render_signal_card(sig)
-                show_pipnex_chart(sym,name,sig)
+                show_live_chart(sym,name,sig)
                 st.divider()
             elif sig:
                 st.info(f"⏳ {name} — WAIT (no clear signal)")
@@ -2046,7 +2070,7 @@ elif "Trade of Day" in page:
                 "Confidence":best["confidence"],"Result":"Open"})
             st.success("✅ Added to journal!")
         st.divider()
-        show_pipnex_chart(best.get("symbol",best.get("sym","")),best["pair"],best)
+        show_live_chart(best.get("symbol",best.get("sym","")),best["pair"],best)
     else: st.info("⏳ No strong signals right now.")
 
 # ════════════════════════════════════════════════════════════
@@ -2430,7 +2454,7 @@ elif "Prop Firm" in page:
             if best:
                 st.divider()
                 st.subheader("📈 Chart for This Signal")
-                show_pipnex_chart(best["sym"], best["pair"], best)
+                show_live_chart(best["sym"], best["pair"], best)
 
     # ══ HOW TO PASS ══
     elif "How to Pass" in pf_section:
@@ -2724,7 +2748,7 @@ Be direct and practical. No fluff."""
         # Chart for top signal
         if custom_signals:
             with st.expander(f"📈 View Chart — {custom_signals[0]['pair']}"):
-                show_pipnex_chart(custom_signals[0]["sym"], custom_signals[0]["pair"], custom_signals[0])
+                show_live_chart(custom_signals[0]["sym"], custom_signals[0]["pair"], custom_signals[0])
 
         st.caption("💡 Lot sizes above are based on $1,000 account. Go to 🏢 Prop Firm or 💰 Risk Calculator to get exact lot sizes for your account.")
 
@@ -3001,7 +3025,7 @@ elif "Subscribe" in page:
       <div style='text-align:left;display:inline-block'>
         <p style='color:#3fb950;margin:4px 0'>✅ All 10 trading pairs</p>
         <p style='color:#3fb950;margin:4px 0'>✅ Grade A/B/C signals with 6-strategy engine</p>
-        <p style='color:#3fb950;margin:4px 0'>✅ Pipnex-style live chart with TP/SL zones</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Live interactive chart with TP/SL zones</p>
         <p style='color:#3fb950;margin:4px 0'>✅ Multi-timeframe + Currency Strength</p>
         <p style='color:#3fb950;margin:4px 0'>✅ Prop Firm tracker (8 firms)</p>
         <p style='color:#3fb950;margin:4px 0'>✅ AI Strategy Builder + Chart Analysis</p>
@@ -3166,7 +3190,7 @@ elif "MT5 Bot" in page:
     # ══ CONNECT & START ════════════════════════════════════
     if "Connect" in bot_section:
         st.subheader("🔌 Connect Your MT5 Account")
-        st.info("Enter your MT5 details once. Our server connects and trades automatically — just like Pipnex.")
+        st.info("Enter your MT5 details once. Our server connects and trades automatically.")
 
         col1,col2 = st.columns(2)
         with col1:
@@ -3175,12 +3199,14 @@ elif "MT5 Bot" in page:
                 placeholder="e.g. 12345678")
             server  = st.selectbox("MT5 Server",
                 ["Exness-Real","Exness-Real2","Exness-Real3","Exness-Real4",
-                 "Exness-Trial","ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"],
-                index=["Exness-Real","Exness-Real2","Exness-Real3","Exness-Real4",
-                       "Exness-Trial","ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"].index(
-                    st.session_state.mt5_server if st.session_state.mt5_server in
-                    ["Exness-Real","Exness-Real2","Exness-Real3","Exness-Real4",
-                     "Exness-Trial","ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"] else "Exness-Real"))
+                 "Exness-Trial",
+                 "JustMarkets-Real","JustMarkets-Demo",
+                 "JustForex-Real","JustForex-Demo",
+                 "ICMarkets-Live01","ICMarkets-Live02",
+                 "XM.COM-Real","XM.COM-Real2",
+                 "FBS-Real","FBS-Demo",
+                 "Deriv-Server","Deriv-Demo",
+                 "Other"])
             if server == "Other":
                 server = st.text_input("Custom server name",placeholder="e.g. Exness-Real5")
 
@@ -3189,7 +3215,9 @@ elif "MT5 Bot" in page:
                 value=st.session_state.mt5_password,
                 type="password", placeholder="Your MT5 investor or main password")
             broker = st.selectbox("Broker",
-                ["Exness","ICMarkets","XM","FBS","FTMO","Other"])
+                ["Exness","Just Markets","JustForex","ICMarkets",
+                 "XM","FBS","Deriv","HFM","OctaFX","FTMO",
+                 "The5ers","FundedNext","Other"])
 
         # Account balance for lot sizing
         balance = st.number_input("Account Balance ($)",
@@ -3201,6 +3229,16 @@ elif "MT5 Bot" in page:
         <span style='color:#8b949e;font-size:13px'> Your credentials are encrypted and stored securely.
         We recommend using your MT5 <b>Investor Password</b> (read-only) for safety,
         or create a separate trading account just for the bot.</span>
+        </div>
+        <div style='background:#161b22;border-radius:10px;padding:12px;margin:8px 0'>
+        <b style='color:#0072ff'>💡 Broker tips:</b><br>
+        <span style='color:#8b949e;font-size:12px'>
+        • <b>Just Markets</b> — Server: JustMarkets-Real · Symbols: XAUUSD, EURUSD (no suffix)<br>
+        • <b>Exness</b> — Server: Exness-Real · Gold symbol: XAUUSDm (with m)<br>
+        • <b>ICMarkets</b> — Server: ICMarkets-Live01 · Standard symbols<br>
+        • <b>XM</b> — Server: XM.COM-Real · Standard symbols<br>
+        • <b>Not sure?</b> Check your MT5 → View → Symbols for exact names
+        </span>
         </div>""", unsafe_allow_html=True)
 
         col1,col2 = st.columns(2)
@@ -3471,7 +3509,7 @@ elif "Subscribe" in page:
       <div style='text-align:left;display:inline-block'>
         <p style='color:#3fb950;margin:4px 0'>✅ All 10 trading pairs</p>
         <p style='color:#3fb950;margin:4px 0'>✅ Grade A/B/C signals with 6-strategy engine</p>
-        <p style='color:#3fb950;margin:4px 0'>✅ Pipnex-style live chart with TP/SL zones</p>
+        <p style='color:#3fb950;margin:4px 0'>✅ Live interactive chart with TP/SL zones</p>
         <p style='color:#3fb950;margin:4px 0'>✅ Multi-timeframe + Currency Strength</p>
         <p style='color:#3fb950;margin:4px 0'>✅ Prop Firm tracker (8 firms)</p>
         <p style='color:#3fb950;margin:4px 0'>✅ AI Strategy Builder + Chart Analysis</p>
