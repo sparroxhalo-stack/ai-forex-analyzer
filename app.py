@@ -807,96 +807,136 @@ def is_pair_active(pair_name):
 @st.cache_data(ttl=900, show_spinner=False)
 def analyse_pair(symbol,pair_name):
     """
-    Full professional analysis with 9 strategies:
-    1. EMA Stack (trend direction + slope)
-    2. RSI + Divergence filter
-    3. MACD Crossover + Histogram momentum
-    4. Bollinger Band Squeeze + Breakout
-    5. Support/Resistance zones (swing highs/lows)
-    6. Break of Structure (BOS/CHoCH)
-    7. Candlestick Pattern recognition
-    8. Volume confirmation
-    9. ADX Trend Strength filter
+    Professional 4-filter strategy:
+    1. Daily trend (EMA 200 — are we above or below?)
+    2. ADX trend strength (only trade trending markets, skip ranges)
+    3. Price at key level (OB, S/R — not in middle of nowhere)
+    4. Rejection candle (pin bar or engulfing confirms entry)
+    + MTF confirmation bonus
     """
     scan_time=datetime.datetime.now(datetime.timezone.utc)
 
-    # Use 4H as primary (fresher signals, better for day trading)
-    df_d=fetch(symbol,"6mo","1d")    # Daily for trend direction
-    df_4h=fetch(symbol,"2mo","1h")   # 4H for entry signals (use last 120 bars = ~30 days)
-    df_1h=fetch(symbol,"2wk","1h")   # 1H for fine-tuning
-    df_w=fetch(symbol,"2y","1wk")    # Weekly for big picture
+    df_d =fetch(symbol,"6mo","1d")
+    df_4h=fetch(symbol,"2mo","1h")
+    df_1h=fetch(symbol,"2wk","1h")
+    df_w =fetch(symbol,"2y","1wk")
     if df_d is None or len(df_d)<50: return None
-    # Use 4H data as primary if available (more recent signals)
-    df_primary = df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>=50 else df_d
 
     c=df_d["Close"]; h_=df_d["High"]; l_=df_d["Low"]
+    o_=df_d["Open"] if "Open" in df_d.columns else c.shift(1)
     price=float(c.iloc[-1])
     atr=get_atr(df_d)
 
-    # ── STRATEGY 1: EMA STACK ──────────────────────────────
-    ema20=c.ewm(span=20).mean(); ema50=c.ewm(span=50).mean(); ema200=c.ewm(span=200).mean()
+    # ── FILTER 1: DAILY TREND — EMA 200 ──────────────────
+    # Most important filter. Only trade WITH the trend.
+    ema20 =c.ewm(span=20).mean()
+    ema50 =c.ewm(span=50).mean()
+    ema200=c.ewm(span=200).mean()
     e20=float(ema20.iloc[-1]); e50=float(ema50.iloc[-1]); e200=float(ema200.iloc[-1])
     ema_slope=(float(ema20.iloc[-1])-float(ema20.iloc[-5]))/float(ema20.iloc[-5])*100
-    # Full stack: all 3 EMAs aligned = strongest signal
-    if e20>e50 and e50>e200 and ema_slope>0:   ema_sig="BUY"
-    elif e20<e50 and e50<e200 and ema_slope<0: ema_sig="SELL"
-    elif e20>e50 and e50>e200:                  ema_sig="BUY"
-    elif e20<e50 and e50<e200:                  ema_sig="SELL"
-    elif e20>e50:                               ema_sig="BUY"
-    elif e20<e50:                               ema_sig="SELL"
-    else:                                       ema_sig="WAIT"
 
-    # ── STRATEGY 2: RSI (14) WITH ZONES ───────────────────
-    rsi_val=get_rsi(c,14)
-    # Stricter zones for quality: 60+ bullish, 40- bearish
-    if rsi_val>=60:   rsi_sig="BUY"
-    elif rsi_val<=40: rsi_sig="SELL"
-    else:             rsi_sig="WAIT"
+    # Strong trend: all 3 EMAs aligned
+    bull_trend = price>e200 and e20>e50   # above 200 and 20>50
+    bear_trend = price<e200 and e20<e50   # below 200 and 20<50
 
-    # ── STRATEGY 3: MACD ──────────────────────────────────
-    macd_line=c.ewm(span=12).mean()-c.ewm(span=26).mean()
-    signal_line=macd_line.ewm(span=9).mean()
-    hist=macd_line-signal_line
-    macd_cross_up=macd_line.iloc[-1]>signal_line.iloc[-1] and macd_line.iloc[-2]<=signal_line.iloc[-2]
-    macd_cross_dn=macd_line.iloc[-1]<signal_line.iloc[-1] and macd_line.iloc[-2]>=signal_line.iloc[-2]
-    hist_rising=float(hist.iloc[-1])>float(hist.iloc[-2])>float(hist.iloc[-3])
-    hist_falling=float(hist.iloc[-1])<float(hist.iloc[-2])<float(hist.iloc[-3])
-    if macd_line.iloc[-1]>signal_line.iloc[-1] and float(hist.iloc[-1])>0 and hist_rising: macd_sig="BUY"
-    elif macd_line.iloc[-1]<signal_line.iloc[-1] and float(hist.iloc[-1])<0 and hist_falling: macd_sig="SELL"
-    elif macd_cross_up: macd_sig="BUY"
-    elif macd_cross_dn: macd_sig="SELL"
-    else: macd_sig="WAIT"
+    if bull_trend:   trend_dir="BUY"
+    elif bear_trend: trend_dir="SELL"
+    else:            trend_dir="WAIT"   # Choppy — skip
 
-    # ── STRATEGY 4: BOLLINGER BANDS ───────────────────────
-    bb_mid=c.rolling(20).mean(); bb_std=c.rolling(20).std()
-    bb_upper=bb_mid+2*bb_std; bb_lower=bb_mid-2*bb_std
-    bb_width=((bb_upper-bb_lower)/bb_mid)
-    squeeze=float(bb_width.iloc[-1])<float(bb_width.rolling(20).mean().iloc[-1])*0.8
-    if price>float(bb_upper.iloc[-1]):                          bb_sig="BUY"
-    elif price<float(bb_lower.iloc[-1]):                        bb_sig="SELL"
-    elif squeeze and price>float(bb_mid.iloc[-1]):              bb_sig="BUY"
-    elif squeeze and price<float(bb_mid.iloc[-1]):              bb_sig="SELL"
-    elif price>float(bb_mid.iloc[-1]) and not squeeze:         bb_sig="BUY"
-    else:                                                        bb_sig="SELL"
+    ema_sig=trend_dir  # for display
 
-    # ── STRATEGY 5: SUPPORT & RESISTANCE ──────────────────
-    # Use swing highs/lows over 20 bars for dynamic S/R
-    res_20=float(h_.rolling(20).max().iloc[-1])
-    sup_20=float(l_.rolling(20).min().iloc[-1])
-    res_10=float(h_.rolling(10).max().iloc[-1])
-    sup_10=float(l_.rolling(10).min().iloc[-1])
-    # Best resistance = lowest of the two (nearest)
-    resistance=min(res_20,res_10)
-    support=max(sup_20,sup_10)
-    sr_range=resistance-support
-    near_res=price>=(resistance-sr_range*0.08)
-    near_sup=price<=(support+sr_range*0.08)
-    if near_res:                           sr_sig="SELL"
-    elif near_sup:                         sr_sig="BUY"
-    elif price>(resistance+support)/2:     sr_sig="BUY"
-    else:                                  sr_sig="SELL"
+    # ── FILTER 2: ADX TREND STRENGTH ─────────────────────
+    # Skip signals when market is ranging (ADX < 20)
+    # Only trade when trend is clear and strong (ADX > 20)
+    try:
+        high_arr=h_.values; low_arr=l_.values; close_arr=c.values
+        plus_dm =[max(high_arr[i]-high_arr[i-1],0) for i in range(1,len(high_arr))]
+        minus_dm=[max(low_arr[i-1]-low_arr[i],0)  for i in range(1,len(low_arr))]
+        tr_arr  =[max(high_arr[i]-low_arr[i],
+                      abs(high_arr[i]-close_arr[i-1]),
+                      abs(low_arr[i]-close_arr[i-1])) for i in range(1,len(close_arr))]
+        period_adx=14
+        if len(tr_arr)>=period_adx:
+            atr_s=pd.Series(tr_arr).rolling(period_adx).mean()
+            pdi_s=pd.Series(plus_dm).rolling(period_adx).mean()/atr_s*100
+            mdi_s=pd.Series(minus_dm).rolling(period_adx).mean()/atr_s*100
+            dx_s =abs(pdi_s-mdi_s)/(pdi_s+mdi_s+1e-9)*100
+            adx_val=float(dx_s.rolling(period_adx).mean().iloc[-1])
+            pdi_val=float(pdi_s.iloc[-1]); mdi_val=float(mdi_s.iloc[-1])
+        else:
+            adx_val=25; pdi_val=25; mdi_val=25
+    except:
+        adx_val=25; pdi_val=25; mdi_val=25
 
-    # ── STRATEGY 6: BREAK OF STRUCTURE (BOS/CHoCH) ────────
+    trend_strong = adx_val >= 20  # market is trending not ranging
+    # ADX direction confirmation
+    adx_bull = pdi_val > mdi_val
+    adx_bear = mdi_val > pdi_val
+
+    # ── FILTER 3: PRICE AT KEY LEVEL ─────────────────────
+    # Don't enter in the middle — wait for price to reach a level
+    resistance=float(h_.rolling(20).max().iloc[-1])
+    support   =float(l_.rolling(20).min().iloc[-1])
+    sr_range  =resistance-support
+    near_sup  =price<=(support+sr_range*0.10)
+    near_res  =price>=(resistance-sr_range*0.10)
+
+    # Order Block detection
+    ob_sig="WAIT"; ob_level=0; ob_name=""; ob_high=0; ob_low=0
+    try:
+        oa=o_.values; ca=c.values; ha=h_.values; la=l_.values
+        for i in range(len(ca)-2, max(len(ca)-40,2), -1):
+            if ca[i]<oa[i]:  # bearish candle = potential bullish OB
+                if i+3<len(ca) and ca[i+3]>ha[i]*1.001:
+                    if la[i]<=price<=ha[i]*1.005:
+                        ob_sig="BUY"; ob_high=ha[i]; ob_low=la[i]
+                        ob_level=round((ob_high+ob_low)/2,5)
+                        ob_name=f"Bullish OB @ {ob_level}"; break
+            elif ca[i]>oa[i]:  # bullish candle = potential bearish OB
+                if i+3<len(ca) and ca[i+3]<la[i]*0.999:
+                    if la[i]*0.995<=price<=ha[i]:
+                        ob_sig="SELL"; ob_high=ha[i]; ob_low=la[i]
+                        ob_level=round((ob_high+ob_low)/2,5)
+                        ob_name=f"Bearish OB @ {ob_level}"; break
+    except: pass
+
+    # At key level = OB OR near S/R
+    at_key_level = ob_sig!="WAIT" or near_sup or near_res
+    if ob_sig!="WAIT":
+        location_reason=ob_name
+    elif near_sup: location_reason=f"At Support {round(support,5)}"
+    elif near_res: location_reason=f"At Resistance {round(resistance,5)}"
+    else:          location_reason="Mid-range"
+
+    # ── FILTER 4: REJECTION CANDLE ────────────────────────
+    # Confirms the market is rejecting the level
+    o=float(o_.iloc[-1]); hi=float(h_.iloc[-1])
+    lo=float(l_.iloc[-1]); cl=float(c.iloc[-1])
+    po=float(o_.iloc[-2]); pc=float(c.iloc[-2])
+    body=abs(cl-o); full=hi-lo if hi!=lo else 1e-9
+    uw=hi-max(cl,o); lw=min(cl,o)-lo
+
+    # Pin bar (hammer/shooting star) — strongest reversal signal
+    bull_pin   = lw>=body*2.0 and uw<=body*0.5 and body>0  # hammer
+    bear_pin   = uw>=body*2.0 and lw<=body*0.5 and body>0  # shooting star
+
+    # Engulfing candle — second strongest
+    bull_engulf= cl>o and pc>po and cl>=po and o<=pc and body>abs(pc-po)*0.8
+    bear_engulf= cl<o and pc<po and cl<=po and o>=pc and body>abs(pc-po)*0.8
+
+    # Strong close (bullish/bearish momentum candle)
+    bull_close = cl>o and (cl-o)/(full) >= 0.6  # closes in top 40%
+    bear_close = cl<o and (o-cl)/(full) >= 0.6  # closes in bottom 40%
+
+    if bull_pin:    candle_name="🔨 Hammer Pin Bar"; candle_sig="BUY";  candle_strength=2
+    elif bear_pin:  candle_name="⭐ Shooting Star";  candle_sig="SELL"; candle_strength=2
+    elif bull_engulf: candle_name="📈 Bull Engulfing";candle_sig="BUY"; candle_strength=2
+    elif bear_engulf: candle_name="📉 Bear Engulfing";candle_sig="SELL";candle_strength=2
+    elif bull_close:  candle_name="✅ Bull Close";    candle_sig="BUY"; candle_strength=1
+    elif bear_close:  candle_name="❌ Bear Close";    candle_sig="SELL";candle_strength=1
+    else:             candle_name="Indecision";       candle_sig="WAIT";candle_strength=0
+
+    # ── BOS (Break of Structure) ──────────────────────────
     lookback_h=float(h_.iloc[-20:-3].max())
     lookback_l=float(l_.iloc[-20:-3].min())
     prev_h=float(h_.iloc[-40:-20].max()) if len(h_)>=40 else lookback_h
@@ -909,145 +949,111 @@ def analyse_pair(symbol,pair_name):
     elif price<lookback_l: bos_sig="SELL"
     else:                  bos_sig="WAIT"
 
-    # ── ORIGINAL 6-STRATEGY SYSTEM (proven working) ─────
-    # Simple voting system — works well, hits TPs consistently
+    rsi_val=get_rsi(c,14)
+    macd_line=c.ewm(12).mean()-c.ewm(26).mean()
+    signal_line=macd_line.ewm(9).mean()
+    rsi_sig="BUY" if rsi_val>=60 else "SELL" if rsi_val<=40 else "WAIT"
+    macd_sig="BUY" if float(macd_line.iloc[-1])>float(signal_line.iloc[-1]) else "SELL"
+    bb_mid=c.rolling(20).mean(); bb_sig="BUY" if price>float(bb_mid.iloc[-1]) else "SELL"
+    sr_sig="BUY" if near_sup else "SELL" if near_res else ("BUY" if price>(resistance+support)/2 else "SELL")
 
-    # Order Block detection (SMC bonus)
-    ob_sig="WAIT"; ob_level=0; ob_name=""; ob_high=0; ob_low=0
-    fvg_sig="WAIT"; fvg_name=""
-    sr_range=resistance-support
-    near_sup=price<=(support+sr_range*0.08)
-    near_res=price>=(resistance-sr_range*0.08)
-    try:
-        opens_arr=df_d["Open"].values if "Open" in df_d.columns else c.shift(1).values
-        closes_arr=c.values; highs_arr=h_.values; lows_arr=l_.values
-        for i in range(len(closes_arr)-2, max(len(closes_arr)-30,2), -1):
-            if closes_arr[i]<opens_arr[i]:
-                if i+3<len(closes_arr) and closes_arr[i+3]>highs_arr[i]*1.001:
-                    ob_high=highs_arr[i]; ob_low=lows_arr[i]
-                    if ob_low<=price<=ob_high*1.003:
-                        ob_sig="BUY"; ob_level=round((ob_high+ob_low)/2,5)
-                        ob_name=f"Bullish OB @ {ob_level}"; break
-            elif closes_arr[i]>opens_arr[i]:
-                if i+3<len(closes_arr) and closes_arr[i+3]<lows_arr[i]*0.999:
-                    ob_high=highs_arr[i]; ob_low=lows_arr[i]
-                    if ob_low*0.997<=price<=ob_high:
-                        ob_sig="SELL"; ob_level=round((ob_high+ob_low)/2,5)
-                        ob_name=f"Bearish OB @ {ob_level}"; break
-    except: pass
+    # ── FINAL DIRECTION — all filters must agree ──────────
+    # Trend + ADX + Level + Candle must all point same way
+    filters_agree = {
+        "trend":   trend_dir,
+        "adx_dir": "BUY" if adx_bull else "SELL" if adx_bear else "WAIT",
+        "candle":  candle_sig,
+        "bos":     bos_sig,
+        "ob":      ob_sig,
+        "sr":      "BUY" if near_sup else "SELL" if near_res else "WAIT",
+    }
 
-    # Combine 6 strategies with pair weights
-    profile=PAIR_PROFILES.get(pair_name,{})
-    weights=profile.get("weights",{"ema":1.0,"rsi":1.0,"macd":1.0,"bb":1.0,"sr":1.0,"bos":1.0})
-    sig_map=[
-        (ema_sig, weights.get("ema",1.0)),
-        (rsi_sig, weights.get("rsi",1.0)),
-        (macd_sig,weights.get("macd",1.0)),
-        (bb_sig,  weights.get("bb",1.0)),
-        (sr_sig,  weights.get("sr",1.0)),
-        (bos_sig, weights.get("bos",1.0)),
-    ]
-    # OB bonus
-    if ob_sig!="WAIT": sig_map.append((ob_sig,1.3))
-    all_sigs=[s[0] for s in sig_map]
-    buys =sum(w for s,w in sig_map if s=="BUY")
-    sells=sum(w for s,w in sig_map if s=="SELL")
-    total=sum(w for _,w in sig_map)
-    smc_bonus=1 if ob_sig!="WAIT" else 0
+    buy_votes  = sum(1 for v in filters_agree.values() if v=="BUY")
+    sell_votes = sum(1 for v in filters_agree.values() if v=="SELL")
 
-    if buys>sells:
-        direction="BUY";  conf=min(95,round(buys/total*100))
-        final_sig="STRONG BUY" if buys/total>=0.8 else "BUY"
-    elif sells>buys:
-        direction="SELL"; conf=min(95,round(sells/total*100))
-        final_sig="STRONG SELL" if sells/total>=0.8 else "SELL"
+    # Require trend + at least 3 other filters
+    if trend_dir=="BUY" and buy_votes>=4 and trend_strong:
+        direction="BUY"; conf=min(95, 55+buy_votes*7+candle_strength*5)
+        final_sig="STRONG BUY" if conf>=85 else "BUY"
+    elif trend_dir=="SELL" and sell_votes>=4 and trend_strong:
+        direction="SELL"; conf=min(95, 55+sell_votes*7+candle_strength*5)
+        final_sig="STRONG SELL" if conf>=85 else "SELL"
+    elif trend_dir!="WAIT" and (buy_votes>=3 or sell_votes>=3) and trend_strong:
+        # Weaker signal — still show but lower grade
+        direction=trend_dir
+        votes=buy_votes if trend_dir=="BUY" else sell_votes
+        conf=min(75, 45+votes*7+candle_strength*3)
+        final_sig=direction
     else:
-        direction="WAIT"; conf=50; final_sig="WAIT"
+        direction="WAIT"; conf=0; final_sig="WAIT"
 
-    # Weekly trend
+    # Session + news filter
+    hour=datetime.datetime.now(datetime.timezone.utc).hour
+    session_ok=(7<=hour<=17) or (12<=hour<=21)
+    session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
+    try:
+        prime_session=is_prime_session(pair_name)
+    except: prime_session=session_ok
+    try:
+        news_blackout,news_event,news_mins=check_news_blackout(pair_name)
+    except: news_blackout=False; news_event=""; news_mins=0
+    if not prime_session and direction!="WAIT": conf=max(0,conf-10)
+    if news_blackout and direction!="WAIT":
+        direction="WAIT"; final_sig="WAIT"; conf=0
+
+    # Weekly trend confirmation
     if df_w is not None and len(df_w)>=10:
         cw=df_w["Close"]
         e20w=cw.ewm(span=20).mean(); e50w=cw.ewm(span=50).mean()
         weekly_bull=float(e20w.iloc[-1])>float(e50w.iloc[-1])
     else: weekly_bull=(direction=="BUY")
     weekly_ok=(weekly_bull and direction=="BUY") or (not weekly_bull and direction=="SELL") or direction=="WAIT"
-
-    # Session + news filter
-    hour=datetime.datetime.now(datetime.timezone.utc).hour
-    session_ok=(7<=hour<=17) or (12<=hour<=21)
-    session_label="London" if 7<=hour<13 else "New York" if 13<=hour<21 else "Asian/Off"
-    # Prime session check
-    try:
-        prime_session=is_prime_session(pair_name)
-    except: prime_session=session_ok
-    # News blackout check
-    try:
-        news_blackout,news_event,news_mins=check_news_blackout(pair_name)
-    except: news_blackout=False; news_event=""; news_mins=0
-    # Apply filters
-    if not prime_session and direction!="WAIT":
-        conf=max(0,conf-10)
-    if news_blackout and direction!="WAIT":
-        direction="WAIT"; final_sig="WAIT"; conf=0
+    if not weekly_ok and direction!="WAIT": conf=max(0,conf-8)
 
     # MTF
-    def tf_sig(df_tf):
+    def tf_sig_fn(df_tf):
         if df_tf is None or len(df_tf)<30: return "WAIT"
         ct=df_tf["Close"]
-        e20t=ct.ewm(span=20).mean().iloc[-1]; e50t=ct.ewm(span=50).mean().iloc[-1]
+        e20t=ct.ewm(span=20).mean().iloc[-1]; e200t=ct.ewm(span=200).mean().iloc[-1] if len(ct)>=200 else e20t
         rt=get_rsi(ct,14)
-        if e20t>e50t and rt>52: return "BUY"
-        if e20t<e50t and rt<48: return "SELL"
-        if e20t>e50t: return "BUY"
-        if e20t<e50t: return "SELL"
-        return "WAIT"
+        if ct.iloc[-1]>e200t and rt>52: return "BUY"
+        if ct.iloc[-1]<e200t and rt<48: return "SELL"
+        if e20t>ct.ewm(span=50).mean().iloc[-1]: return "BUY"
+        return "SELL"
 
-    sig_daily=ema_sig
-    sig_4h=tf_sig(df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>120 else df_4h)
-    sig_1h=tf_sig(df_1h.iloc[-60:]  if df_1h  is not None and len(df_1h)>60  else df_1h)
-    mtf_sigs=[s for s in [sig_daily,sig_4h,sig_1h] if s!="WAIT"]
+    sig_4h=tf_sig_fn(df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>120 else df_4h)
+    sig_1h=tf_sig_fn(df_1h.iloc[-60:]  if df_1h  is not None and len(df_1h)>60  else df_1h)
+    mtf_sigs=[s for s in [trend_dir,sig_4h,sig_1h] if s!="WAIT"]
     mtf_buys=sum(1 for s in mtf_sigs if "BUY" in s)
     mtf_sells=sum(1 for s in mtf_sigs if "SELL" in s)
-    mtf_ok=(mtf_buys>mtf_sells and direction=="BUY") or (mtf_sells>mtf_buys and direction=="SELL")
-    mtf_agree=f"BUY — {mtf_buys}/{len(mtf_sigs)} TFs" if mtf_buys>mtf_sells else               f"SELL — {mtf_sells}/{len(mtf_sigs)} TFs" if mtf_sells>mtf_buys else "Mixed TFs"
-
-    # Candle display info
-    vol_ok=True; candle_quality_ok=True; at_key_level=near_sup or near_res
-    location_reason=f"At Support" if near_sup else f"At Resistance" if near_res else "Mid-range"
-    trigger_reason=f"6 strategies · {sig_4h} 4H · {sig_1h} 1H"
-    tier1=direction; tier2="MATCH" if at_key_level else "WAIT"; tier3=sig_4h
-    o=float(df_d["Open"].iloc[-1]) if "Open" in df_d.columns else float(c.iloc[-2])
-    hi=float(h_.iloc[-1]); lo=float(l_.iloc[-1]); cl=float(c.iloc[-1])
-    po=float(df_d["Open"].iloc[-2]) if "Open" in df_d.columns else float(c.iloc[-3])
-    pc=float(c.iloc[-2]); body=abs(cl-o); full=hi-lo
-    uw=hi-max(cl,o); lw=min(cl,o)-lo
-    bull_engulf=cl>o and pc<po and cl>po and o<pc
-    bear_engulf=cl<o and pc>po and cl<po and o>pc
-    bull_pin=lw>body*2 and uw<body*0.5
-    bear_pin=uw>body*2 and lw<body*0.5
-    if bull_engulf: candle_name="Bullish Engulfing"
-    elif bear_engulf: candle_name="Bearish Engulfing"
-    elif bull_pin: candle_name="Hammer/Pin Bar"
-    elif bear_pin: candle_name="Shooting Star"
-    elif cl>o: candle_name="Bullish close"
-    else: candle_name="Bearish close"
-
-    atr_pct=atr/price*100; atr_ok=atr_pct>=0.15
-    trend_strong=abs(ema_slope)>0.05
+    mtf_ok=(mtf_buys>=2 and direction=="BUY") or (mtf_sells>=2 and direction=="SELL")
+    if mtf_ok and direction!="WAIT": conf=min(95,conf+5)
+    mtf_agree=f"BUY — {mtf_buys}/{len(mtf_sigs)} TFs" if mtf_buys>mtf_sells else \
+              f"SELL — {mtf_sells}/{len(mtf_sigs)} TFs" if mtf_sells>mtf_buys else "Mixed TFs"
 
     # Specialist weighting
     spec=SPECIALIST.get(pair_name,1.0)
-    adj_conf=min(95,round(conf*spec)) if direction!="WAIT" else 50
+    adj_conf=min(95,round(conf*spec)) if direction!="WAIT" else 0
 
-    # Grade
-    agree_count=max(buys,sells)
-    filters_passed=sum([atr_ok,weekly_ok,session_ok,mtf_ok])
-    if adj_conf>=80 and agree_count>=5 and filters_passed>=3: grade="A"
-    elif adj_conf>=65 and agree_count>=4 and filters_passed>=2: grade="B"
-    elif adj_conf>=50 and agree_count>=3 and filters_passed>=1: grade="C"
+    # Grade — based on filter quality
+    atr_pct=atr/price*100; atr_ok=atr_pct>=0.15
+    filters_passed=sum([atr_ok,weekly_ok,session_ok,mtf_ok,trend_strong,at_key_level])
+    agree_count=max(buy_votes,sell_votes)
+
+    if direction=="WAIT": grade="D"
+    elif adj_conf>=82 and candle_strength==2 and ob_sig!="WAIT" and mtf_ok: grade="A"  # Best: OB+rejection+MTF
+    elif adj_conf>=72 and candle_strength>=1 and at_key_level and trend_strong: grade="B"
+    elif adj_conf>=60 and trend_strong: grade="C"
     else: grade="D"
 
     if grade=="D": direction="WAIT"; final_sig="WAIT"
+
+    smc_bonus=1 if ob_sig!="WAIT" else 0
+    buys=buy_votes; sells=sell_votes
+    trigger_reason=f"ADX:{round(adx_val,1)} · {candle_name} · {location_reason}"
+    tier1=trend_dir; tier2="MATCH" if at_key_level else "WAIT"; tier3=sig_4h
+    vol_ok=True; candle_quality_ok=candle_strength>0
+    fvg_sig="WAIT"; fvg_name=""; at_key_level_=at_key_level
 
     # ── TRADE LEVELS ─────────────────────────────────────
     # SL  = 0.3x ATR  (very tight — just past recent swing)
@@ -3152,6 +3158,296 @@ elif "Upgrade" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: MT5 BOT CONTROL PANEL
 # ════════════════════════════════════════════════════════════
+elif "Pair Profiles" in page:
+    st.markdown("### 🧬 Pair Personality Profiles")
+    if not premium: st.error("🔒 Premium only."); st.stop()
+    selected_pair=st.selectbox("Select Pair",list(PAIR_PROFILES.keys()))
+    profile=PAIR_PROFILES[selected_pair]
+    st.markdown(f"""
+    <div style='background:#161b22;border-radius:14px;padding:20px;
+      border-left:5px solid #0072ff;margin-bottom:16px'>
+    <h2 style='color:#fff;margin:0'>{profile["emoji"]} {selected_pair}</h2>
+    <p style='color:#ffd200;font-size:15px;margin:8px 0;font-weight:700'>{profile["character"]}</p>
+    <div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px'>
+      <div style='background:#0d1117;border-radius:10px;padding:12px'>
+        <div style='color:#3fb950;font-weight:700;margin-bottom:6px'>✅ Best For</div>
+        <div style='color:#e6edf3;font-size:13px'>{profile["best_for"]}</div>
+      </div>
+      <div style='background:#0d1117;border-radius:10px;padding:12px'>
+        <div style='color:#f85149;font-weight:700;margin-bottom:6px'>❌ Avoid</div>
+        <div style='color:#e6edf3;font-size:13px'>{profile["avoid"]}</div>
+      </div>
+      <div style='background:#0d1117;border-radius:10px;padding:12px'>
+        <div style='color:#0072ff;font-weight:700;margin-bottom:6px'>⏰ Best Session</div>
+        <div style='color:#e6edf3;font-size:13px'>{profile["sessions"]}</div>
+      </div>
+    </div></div>""",unsafe_allow_html=True)
+    st.subheader("📊 Strategy Weights")
+    for strat,weight in profile["weights"].items():
+        snames={"ema":"EMA Stack","rsi":"RSI","macd":"MACD","bb":"Bollinger","sr":"S/R","bos":"BOS"}
+        col1,col2=st.columns([1,3])
+        col1.markdown(f"**{snames.get(strat,strat.upper())}**")
+        bar_pct=min(100,int(weight/1.5*100))
+        bar_color="#3fb950" if weight>=1.3 else "#0072ff" if weight>=1.0 else "#8b949e"
+        col2.markdown(f"""<div style='background:#21262d;border-radius:6px;height:22px;margin-top:4px'>
+          <div style='background:{bar_color};width:{bar_pct}%;height:22px;border-radius:6px;
+            padding-left:8px;line-height:22px;color:#fff;font-size:11px'>{weight}x</div>
+        </div>""",unsafe_allow_html=True)
+    st.divider()
+    st.subheader("🌍 All Pairs Overview")
+    for pname,prof in PAIR_PROFILES.items():
+        weights=prof["weights"]; top=max(weights,key=weights.get)
+        snames={"ema":"EMA","rsi":"RSI","macd":"MACD","bb":"BB","sr":"S/R","bos":"BOS"}
+        st.markdown(f"""
+        <div style='background:#161b22;border-radius:10px;padding:12px;margin-bottom:8px;
+          display:flex;justify-content:space-between;align-items:center'>
+          <div><b style='color:#fff'>{prof["emoji"]} {pname}</b>
+          <p style='color:#8b949e;font-size:12px;margin:2px 0'>{prof["character"]}</p></div>
+          <span style='background:#0072ff22;color:#58a6ff;padding:3px 10px;
+            border-radius:6px;font-size:11px'>Top: {snames.get(top,top)} ({weights[top]}x)</span>
+        </div>""",unsafe_allow_html=True)
+
+elif "Grid Bot" in page:
+    st.markdown("### ⚡ Grid Scalping Bot")
+    if not premium: st.error("🔒 Premium only."); st.stop()
+
+    email = st.session_state.get("user_email","")
+
+    # ── Session state ──────────────────────────────────────
+    for k,v in [("grid_active",False),("grid_connected",False),
+                ("grid_account",""),("grid_password",""),
+                ("grid_server","Exness-Real"),("grid_broker","Exness"),
+                ("grid_symbol","XAUUSDm"),("grid_lot",0.01),
+                ("grid_num_trades",5),("grid_tp",10),("grid_sl",30),
+                ("grid_daily_target",50.0),("grid_daily_loss",30.0),
+                ("grid_balance",100.0),("grid_total_cycles",0),
+                ("grid_total_profit",0.0),("grid_total_loss",0.0)]:
+        if k not in st.session_state: st.session_state[k]=v
+
+    is_active = st.session_state.grid_active
+
+    # ── Status banner ──────────────────────────────────────
+    status_color = "#3fb950" if is_active else "#f85149"
+    st.markdown(f"""
+    <div style='background:{"#0a1a0a" if is_active else "#1a0a0a"};
+      border:2px solid {status_color};border-radius:14px;
+      padding:18px;text-align:center;margin-bottom:16px'>
+      <div style='font-size:28px;font-weight:900;color:{status_color}'>
+        {"⚡ GRID BOT ACTIVE" if is_active else "⏹ GRID BOT STOPPED"}
+      </div>
+      <div style='color:#8b949e;font-size:13px;margin-top:6px'>
+        {f"{st.session_state.grid_symbol} | {st.session_state.grid_num_trades} trades × {st.session_state.grid_lot} lot | TP: {st.session_state.grid_tp} pips" if is_active
+         else "Configure below and press START"}
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Live stats ─────────────────────────────────────────
+    if is_active:
+        # Fetch live stats from Supabase
+        try:
+            r = requests.get(
+                sb_url("grid_trades")+f"?user_email=eq.{email}&order=created_at.desc&limit=50",
+                headers=get_headers(), timeout=8)
+            grid_trades_data = r.json() if r.status_code==200 else []
+        except: grid_trades_data=[]
+
+        # Calculate stats
+        open_trades  = [t for t in grid_trades_data if t.get("status")=="open"]
+        closed_trades= [t for t in grid_trades_data if t.get("status")=="closed"]
+        total_profit = sum(float(t.get("profit",0)) for t in closed_trades)
+        total_cycles = len(set(t.get("cycle_id","") for t in closed_trades if t.get("cycle_id")))
+        win_cycles   = len([t for t in closed_trades if float(t.get("profit",0))>0])
+        float_profit = sum(float(t.get("float_profit",0)) for t in open_trades)
+        deposit      = st.session_state.grid_balance
+
+        st.markdown(f"""
+        <div style='display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px'>
+          <div style='background:#161b22;border-radius:12px;padding:16px;text-align:center'>
+            <div style='color:#8b949e;font-size:11px;font-weight:700'>DEPOSIT</div>
+            <div style='font-size:28px;font-weight:900;color:#fff'>${deposit:,.2f}</div>
+          </div>
+          <div style='background:#161b22;border-radius:12px;padding:16px;text-align:center'>
+            <div style='color:#8b949e;font-size:11px;font-weight:700'>TOTAL PROFIT</div>
+            <div style='font-size:28px;font-weight:900;color:{"#3fb950" if total_profit>=0 else "#f85149"}'>
+              {"+" if total_profit>=0 else ""}${total_profit:,.2f}
+            </div>
+          </div>
+          <div style='background:#161b22;border-radius:12px;padding:16px;text-align:center'>
+            <div style='color:#8b949e;font-size:11px;font-weight:700'>FLOATING P&L</div>
+            <div style='font-size:28px;font-weight:900;color:{"#3fb950" if float_profit>=0 else "#f85149"}'>
+              {"+" if float_profit>=0 else ""}${float_profit:,.2f}
+            </div>
+          </div>
+          <div style='background:#161b22;border-radius:12px;padding:16px;text-align:center'>
+            <div style='color:#8b949e;font-size:11px;font-weight:700'>OPEN TRADES</div>
+            <div style='font-size:28px;font-weight:900;color:#ffd200'>{len(open_trades)}</div>
+          </div>
+          <div style='background:#161b22;border-radius:12px;padding:16px;text-align:center'>
+            <div style='color:#8b949e;font-size:11px;font-weight:700'>CYCLES COMPLETED</div>
+            <div style='font-size:28px;font-weight:900;color:#0072ff'>{total_cycles}</div>
+          </div>
+          <div style='background:#161b22;border-radius:12px;padding:16px;text-align:center'>
+            <div style='color:#8b949e;font-size:11px;font-weight:700'>WIN RATE</div>
+            <div style='font-size:28px;font-weight:900;color:#3fb950'>
+              {round(win_cycles/max(total_cycles,1)*100)}%
+            </div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        # Current open trades
+        if open_trades:
+            st.subheader(f"📊 Live Trades ({len(open_trades)} open)")
+            for t in open_trades:
+                dc="#3fb950" if t.get("direction")=="BUY" else "#f85149"
+                fp=float(t.get("float_profit",0))
+                st.markdown(f"""
+                <div style='background:#161b22;border-radius:10px;padding:12px;
+                  margin-bottom:6px;border-left:3px solid {dc}'>
+                  <div style='display:flex;justify-content:space-between'>
+                    <b style='color:{dc}'>{t.get("direction","")} {t.get("symbol","")} {t.get("lot","")}L</b>
+                    <span style='color:{"#3fb950" if fp>=0 else "#f85149"};font-weight:700'>
+                      {"+" if fp>=0 else ""}${fp:.2f}
+                    </span>
+                  </div>
+                  <div style='font-size:12px;color:#8b949e'>
+                    Entry: {t.get("entry","")} · TP: {t.get("tp","")} · SL: {t.get("sl","")}
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
+        # Recent closed cycles
+        if closed_trades:
+            st.subheader("📋 Recent Cycles")
+            shown=[]
+            for t in closed_trades[:10]:
+                cid=t.get("cycle_id","")
+                if cid not in shown:
+                    shown.append(cid)
+                    profit=float(t.get("profit",0))
+                    pc="#3fb950" if profit>0 else "#f85149"
+                    st.markdown(f"""
+                    <div style='background:#161b22;border-radius:8px;padding:10px;
+                      margin-bottom:4px;display:flex;justify-content:space-between'>
+                      <span style='color:#e6edf3'>{t.get("symbol","")} {t.get("direction","")} × {t.get("num_trades","")}</span>
+                      <span style='color:{pc};font-weight:700'>{"+" if profit>0 else ""}${profit:.2f}</span>
+                    </div>""", unsafe_allow_html=True)
+
+        col1,col2=st.columns(2)
+        if col1.button("🔄 Refresh Stats",use_container_width=True):
+            st.rerun()
+        if col2.button("⏹️ STOP GRID BOT",type="primary" if is_active else "secondary",
+                       use_container_width=True):
+            requests.patch(sb_url("grid_credentials")+f"?user_email=eq.{email}",
+                headers=get_headers(),
+                json={"active":False,"updated_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                timeout=8)
+            st.session_state.grid_active=False
+            st.warning("⏹️ Grid bot stopped. All running trades will complete their current cycle.")
+            st.rerun()
+        st.divider()
+
+    # ── Configuration ──────────────────────────────────────
+    st.subheader("⚙️ Grid Bot Setup")
+    col1,col2=st.columns(2)
+    with col1:
+        g_account=st.text_input("MT5 Account",value=st.session_state.grid_account,placeholder="12345678")
+        g_server =st.selectbox("MT5 Server",
+            ["Exness-Real","Exness-Real2","JustMarkets-Real","JustMarkets-Demo",
+             "ICMarkets-Live01","XM.COM-Real","FBS-Real","Other"])
+        g_symbol =st.selectbox("Symbol",
+            ["XAUUSDm","XAUUSDm.","XAUUSD","EURUSDm","GBPUSDm","EURUSD","GBPUSD","BTCUSDm"],
+            help="Gold (XAUUSDm) works best for grid scalping")
+        g_num    =st.slider("Trades per Grid",2,8,st.session_state.grid_num_trades)
+    with col2:
+        g_password=st.text_input("MT5 Password",value=st.session_state.grid_password,type="password")
+        g_broker  =st.selectbox("Broker",["Exness","Just Markets","ICMarkets","XM","FBS","Other"])
+        g_lot     =st.selectbox("Lot Size per Trade",
+            [0.01,0.02,0.03,0.05,0.10],
+            help="0.01 = safest for $20-200 accounts")
+        g_balance =st.number_input("Account Balance ($)",min_value=10.0,
+            value=st.session_state.grid_balance,step=10.0)
+
+    col3,col4=st.columns(2)
+    with col3:
+        g_tp     =st.number_input("Take Profit (pips)",min_value=5,max_value=50,
+            value=st.session_state.grid_tp)
+        g_target =st.number_input("Daily Profit Target ($)",min_value=1.0,
+            value=st.session_state.grid_daily_target,step=5.0)
+    with col4:
+        g_sl     =st.number_input("Stop Loss (pips)",min_value=10,max_value=100,
+            value=st.session_state.grid_sl)
+        g_loss   =st.number_input("Daily Loss Limit ($)",min_value=1.0,
+            value=st.session_state.grid_daily_loss,step=5.0)
+
+    # Show potential per cycle
+    profit_per_cycle=g_lot*g_num*g_tp*0.1
+    st.markdown(f"""
+    <div style='background:#0d1117;border-radius:10px;padding:14px;margin:10px 0'>
+      <b style='color:#ffd200'>💰 Estimated profit per cycle:</b>
+      <span style='color:#3fb950;font-size:20px;font-weight:800;margin-left:10px'>
+        +${profit_per_cycle:.2f}
+      </span>
+      <span style='color:#8b949e;font-size:12px'> ({g_num} trades × {g_lot} lot × {g_tp} pips)</span><br>
+      <span style='color:#8b949e;font-size:12px'>
+        Daily target ${g_target:.0f} = approx {round(g_target/profit_per_cycle)} winning cycles
+      </span>
+    </div>""", unsafe_allow_html=True)
+
+    # START button
+    if st.button("▶️ START GRID BOT",type="primary",use_container_width=True,
+                 disabled=is_active):
+        if not g_account or not g_password:
+            st.error("Enter your MT5 account number and password")
+        else:
+            # Save to Supabase for VPS to pick up
+            r=requests.post(sb_url("grid_credentials"),
+                headers=get_headers(),
+                json={
+                    "user_email":   email,
+                    "account":      g_account,
+                    "password":     g_password,
+                    "server":       g_server,
+                    "broker":       g_broker,
+                    "symbol":       g_symbol,
+                    "lot_size":     g_lot,
+                    "num_trades":   g_num,
+                    "tp_pips":      g_tp,
+                    "sl_pips":      g_sl,
+                    "balance":      g_balance,
+                    "daily_target": g_target,
+                    "daily_loss":   g_loss,
+                    "active":       True,
+                    "updated_at":   datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                }, timeout=8)
+
+            # Update session state
+            st.session_state.grid_active=True
+            st.session_state.grid_account=g_account
+            st.session_state.grid_password=g_password
+            st.session_state.grid_server=g_server
+            st.session_state.grid_broker=g_broker
+            st.session_state.grid_symbol=g_symbol
+            st.session_state.grid_lot=g_lot
+            st.session_state.grid_num_trades=g_num
+            st.session_state.grid_tp=g_tp
+            st.session_state.grid_sl=g_sl
+            st.session_state.grid_balance=g_balance
+            st.session_state.grid_daily_target=g_target
+            st.session_state.grid_daily_loss=g_loss
+
+            st.success(f"✅ Grid Bot activated! Your VPS will start trading {g_symbol} immediately.")
+            st.info(f"Opening {g_num} × {g_lot} lot trades | TP: {g_tp} pips | Est. ${profit_per_cycle:.2f}/cycle")
+            st.rerun()
+
+    st.divider()
+    st.markdown("""
+    <div style='background:#1a0a0a;border:1px solid #f8514930;border-radius:10px;padding:12px'>
+    <b style='color:#f85149'>⚠️ Grid Bot Risk Warning</b><br>
+    <span style='color:#8b949e;font-size:12px'>
+    Grid bots can lose multiple trades simultaneously if market moves strongly against position.
+    Start with 0.01 lots. Test on demo first. Never use money you cannot afford to lose.
+    The daily loss limit will stop the bot automatically to protect your account.
+    </span></div>""", unsafe_allow_html=True)
+
 elif "MT5 Bot" in page:
     st.markdown("### 🤖 MT5 Auto-Trading")
     if not premium: st.error("🔒 Premium only."); st.stop()
@@ -3636,6 +3932,55 @@ elif "Upgrade" in page:
 # ════════════════════════════════════════════════════════════
 # PAGE: MT5 BOT CONTROL PANEL
 # ════════════════════════════════════════════════════════════
+elif "Pair Profiles" in page:
+    st.markdown("### 🧬 Pair Personality Profiles")
+    if not premium: st.error("🔒 Premium only."); st.stop()
+    selected_pair=st.selectbox("Select Pair",list(PAIR_PROFILES.keys()))
+    profile=PAIR_PROFILES[selected_pair]
+    st.markdown(f"""
+    <div style='background:#161b22;border-radius:14px;padding:20px;
+      border-left:5px solid #0072ff;margin-bottom:16px'>
+    <h2 style='color:#fff;margin:0'>{profile["emoji"]} {selected_pair}</h2>
+    <p style='color:#ffd200;font-size:15px;margin:8px 0;font-weight:700'>{profile["character"]}</p>
+    <div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px'>
+      <div style='background:#0d1117;border-radius:10px;padding:12px'>
+        <div style='color:#3fb950;font-weight:700;margin-bottom:6px'>✅ Best For</div>
+        <div style='color:#e6edf3;font-size:13px'>{profile["best_for"]}</div>
+      </div>
+      <div style='background:#0d1117;border-radius:10px;padding:12px'>
+        <div style='color:#f85149;font-weight:700;margin-bottom:6px'>❌ Avoid</div>
+        <div style='color:#e6edf3;font-size:13px'>{profile["avoid"]}</div>
+      </div>
+      <div style='background:#0d1117;border-radius:10px;padding:12px'>
+        <div style='color:#0072ff;font-weight:700;margin-bottom:6px'>⏰ Best Session</div>
+        <div style='color:#e6edf3;font-size:13px'>{profile["sessions"]}</div>
+      </div>
+    </div></div>""",unsafe_allow_html=True)
+    st.subheader("📊 Strategy Weights")
+    for strat,weight in profile["weights"].items():
+        snames={"ema":"EMA Stack","rsi":"RSI","macd":"MACD","bb":"Bollinger","sr":"S/R","bos":"BOS"}
+        col1,col2=st.columns([1,3])
+        col1.markdown(f"**{snames.get(strat,strat.upper())}**")
+        bar_pct=min(100,int(weight/1.5*100))
+        bar_color="#3fb950" if weight>=1.3 else "#0072ff" if weight>=1.0 else "#8b949e"
+        col2.markdown(f"""<div style='background:#21262d;border-radius:6px;height:22px;margin-top:4px'>
+          <div style='background:{bar_color};width:{bar_pct}%;height:22px;border-radius:6px;
+            padding-left:8px;line-height:22px;color:#fff;font-size:11px'>{weight}x</div>
+        </div>""",unsafe_allow_html=True)
+    st.divider()
+    st.subheader("🌍 All Pairs Overview")
+    for pname,prof in PAIR_PROFILES.items():
+        weights=prof["weights"]; top=max(weights,key=weights.get)
+        snames={"ema":"EMA","rsi":"RSI","macd":"MACD","bb":"BB","sr":"S/R","bos":"BOS"}
+        st.markdown(f"""
+        <div style='background:#161b22;border-radius:10px;padding:12px;margin-bottom:8px;
+          display:flex;justify-content:space-between;align-items:center'>
+          <div><b style='color:#fff'>{prof["emoji"]} {pname}</b>
+          <p style='color:#8b949e;font-size:12px;margin:2px 0'>{prof["character"]}</p></div>
+          <span style='background:#0072ff22;color:#58a6ff;padding:3px 10px;
+            border-radius:6px;font-size:11px'>Top: {snames.get(top,top)} ({weights[top]}x)</span>
+        </div>""",unsafe_allow_html=True)
+
 elif "MT5 Bot" in page:
     import json, os, base64
 
