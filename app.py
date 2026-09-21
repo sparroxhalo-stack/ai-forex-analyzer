@@ -1021,6 +1021,7 @@ def analyse_pair(symbol,pair_name):
         if e20t>ct.ewm(span=50).mean().iloc[-1]: return "BUY"
         return "SELL"
 
+    sig_daily=trend_dir  # Daily trend direction
     sig_4h=tf_sig_fn(df_4h.iloc[-120:] if df_4h is not None and len(df_4h)>120 else df_4h)
     sig_1h=tf_sig_fn(df_1h.iloc[-60:]  if df_1h  is not None and len(df_1h)>60  else df_1h)
     mtf_sigs=[s for s in [trend_dir,sig_4h,sig_1h] if s!="WAIT"]
