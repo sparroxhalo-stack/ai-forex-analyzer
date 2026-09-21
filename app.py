@@ -3241,15 +3241,16 @@ elif "Grid Bot" in page:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # ── Live stats ─────────────────────────────────────────
-    if is_active:
-        # Fetch live stats from Supabase
-        try:
-            r = requests.get(
-                sb_url("grid_trades")+f"?user_email=eq.{email}&order=created_at.desc&limit=50",
-                headers=get_headers(), timeout=8)
-            grid_trades_data = r.json() if r.status_code==200 else []
-        except: grid_trades_data=[]
+    # ── Live stats — always visible ───────────────────────
+    # Fetch stats from Supabase
+    try:
+        r = requests.get(
+            sb_url("grid_trades")+f"?user_email=eq.{email}&order=created_at.desc&limit=50",
+            headers=get_headers(), timeout=8)
+        grid_trades_data = r.json() if r.status_code==200 else []
+    except: grid_trades_data=[]
+
+    if True:  # Always show stats section
 
         # Calculate stats
         open_trades  = [t for t in grid_trades_data if t.get("status")=="open"]
@@ -3334,16 +3335,18 @@ elif "Grid Bot" in page:
         col1,col2=st.columns(2)
         if col1.button("🔄 Refresh Stats",use_container_width=True):
             st.rerun()
-        if col2.button("⏹️ STOP GRID BOT",type="primary" if is_active else "secondary",
-                       use_container_width=True):
+        if col2.button("⏹️ STOP GRID BOT",
+                       use_container_width=True,
+                       type="primary" if is_active else "secondary",
+                       disabled=not is_active):
             requests.patch(sb_url("grid_credentials")+f"?user_email=eq.{email}",
                 headers=get_headers(),
                 json={"active":False,"updated_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
                 timeout=8)
             st.session_state.grid_active=False
-            st.warning("⏹️ Grid bot stopped. All running trades will complete their current cycle.")
+            st.warning("⏹️ Grid bot stopped.")
             st.rerun()
-        st.divider()
+    st.divider()
 
     # ── Configuration ──────────────────────────────────────
     st.subheader("⚙️ Grid Bot Setup")
