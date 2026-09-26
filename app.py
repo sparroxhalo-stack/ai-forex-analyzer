@@ -3302,8 +3302,33 @@ elif "Grid Bot" in page:
                 ("grid_num_trades",5),("grid_tp",10),("grid_sl",30),
                 ("grid_daily_target",50.0),("grid_daily_loss",30.0),
                 ("grid_balance",100.0),("grid_total_cycles",0),
-                ("grid_total_profit",0.0),("grid_total_loss",0.0)]:
+                ("grid_total_profit",0.0),("grid_total_loss",0.0),
+                ("grid_status_loaded",False)]:
         if k not in st.session_state: st.session_state[k]=v
+
+    # ── Always read real status from Supabase ─────────────
+    # This ensures status is correct even after app refresh
+    if not st.session_state.grid_status_loaded:
+        try:
+            r=requests.get(
+                sb_url("grid_credentials")+f"?user_email=eq.{email}",
+                headers=get_headers(), timeout=5)
+            if r.status_code==200 and r.json():
+                creds=r.json()[0]
+                st.session_state.grid_active    =creds.get("active",False)
+                st.session_state.grid_account   =creds.get("account","")
+                st.session_state.grid_server    =creds.get("server","Exness-Real")
+                st.session_state.grid_broker    =creds.get("broker","Exness")
+                st.session_state.grid_symbol    =creds.get("symbol","XAUUSDm")
+                st.session_state.grid_lot       =float(creds.get("lot_size",0.01))
+                st.session_state.grid_num_trades=int(creds.get("num_trades",5))
+                st.session_state.grid_tp        =int(creds.get("tp_pips",10))
+                st.session_state.grid_sl        =int(creds.get("sl_pips",30))
+                st.session_state.grid_balance   =float(creds.get("balance",100.0))
+                st.session_state.grid_daily_target=float(creds.get("daily_target",50.0))
+                st.session_state.grid_daily_loss  =float(creds.get("daily_loss",30.0))
+            st.session_state.grid_status_loaded=True
+        except: pass
 
     is_active = st.session_state.grid_active
 
@@ -3538,12 +3563,84 @@ elif "MT5 Bot" in page:
 
     email = st.session_state.get("user_email","")
 
+    # ── Bot type selector ──────────────────────────────────
+    st.subheader("🤖 Choose Your Bot Type")
+    if "bot_type" not in st.session_state: st.session_state.bot_type="Swing/Day Bot"
+
+    col1,col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+        <div style='background:{"#0a1a0a" if st.session_state.bot_type=="Swing/Day Bot" else "#161b22"};
+          border:2px solid {"#3fb950" if st.session_state.bot_type=="Swing/Day Bot" else "#21262d"};
+          border-radius:14px;padding:18px;text-align:center;cursor:pointer'>
+          <div style='font-size:28px'>📈</div>
+          <b style='color:{"#3fb950" if st.session_state.bot_type=="Swing/Day Bot" else "#fff"}'>Swing / Day Bot</b>
+          <p style='color:#8b949e;font-size:12px;margin:8px 0'>
+          Uses 6 strategies + liquidity sweeps.<br>
+          Opens 1 trade at a time.<br>
+          Best for: Balanced, Day Trading, Swing modes.<br>
+          Min account: $50
+          </p>
+        </div>""", unsafe_allow_html=True)
+        if st.button("Select Swing/Day Bot", use_container_width=True,
+            type="primary" if st.session_state.bot_type=="Swing/Day Bot" else "secondary"):
+            st.session_state.bot_type="Swing/Day Bot"; st.rerun()
+
+    with col2:
+        st.markdown(f"""
+        <div style='background:{"#0a1a0a" if st.session_state.bot_type=="Grid Bot" else "#161b22"};
+          border:2px solid {"#ffd200" if st.session_state.bot_type=="Grid Bot" else "#21262d"};
+          border-radius:14px;padding:18px;text-align:center;cursor:pointer'>
+          <div style='font-size:28px'>⚡</div>
+          <b style='color:{"#ffd200" if st.session_state.bot_type=="Grid Bot" else "#fff"}'>Grid Scalping Bot</b>
+          <p style='color:#8b949e;font-size:12px;margin:8px 0'>
+          Opens 3-8 trades simultaneously.<br>
+          All close when TP is hit.<br>
+          Best for: Gold scalping on 1M/5M.<br>
+          Min account: $20
+          </p>
+        </div>""", unsafe_allow_html=True)
+        if st.button("Select Grid Bot", use_container_width=True,
+            type="primary" if st.session_state.bot_type=="Grid Bot" else "secondary"):
+            st.session_state.bot_type="Grid Bot"; st.rerun()
+
+    st.divider()
+
+    # Route to correct bot UI
+    if st.session_state.bot_type=="Grid Bot":
+        # Redirect to Grid Bot tab
+        st.info("⚡ You selected the Grid Bot — go to the **⚡ Grid Bot** tab to configure and start it.")
+        if st.button("→ Go to Grid Bot", type="primary", use_container_width=True):
+            st.session_state.active_tab="⚡ Grid Bot"
+            st.rerun()
+        st.stop()
+
     # ── Session state ──────────────────────────────────────
     for k,v in [("mt5_account",""),("mt5_password",""),("mt5_server","Exness-Real"),
                 ("mt5_broker","Exness"),("mt5_mode","Balanced"),
                 ("mt5_balance",1000.0),("mt5_risk",1.0),("mt5_max_trades",3),
-                ("mt5_daily_loss",5.0),("mt5_active",False),("mt5_connected",False)]:
+                ("mt5_daily_loss",5.0),("mt5_active",False),("mt5_connected",False),
+                ("mt5_status_loaded",False)]:
         if k not in st.session_state: st.session_state[k]=v
+
+    # Read real status from Supabase on app load/refresh
+    if not st.session_state.mt5_status_loaded:
+        try:
+            r=requests.get(
+                sb_url("bot_credentials")+f"?user_email=eq.{email}",
+                headers=get_headers(), timeout=5)
+            if r.status_code==200 and r.json():
+                creds=r.json()[0]
+                st.session_state.mt5_active   =creds.get("active",False)
+                st.session_state.mt5_connected=creds.get("active",False)
+                st.session_state.mt5_account  =creds.get("account","")
+                st.session_state.mt5_server   =creds.get("server","Exness-Real")
+                st.session_state.mt5_broker   =creds.get("broker","Exness")
+                st.session_state.mt5_mode     =creds.get("mode","Balanced")
+                st.session_state.mt5_balance  =float(creds.get("balance",1000.0))
+                st.session_state.mt5_risk     =float(creds.get("risk_pct",1.0))
+            st.session_state.mt5_status_loaded=True
+        except: pass
 
     # ── Status banner ──────────────────────────────────────
     is_active    = st.session_state.mt5_active
