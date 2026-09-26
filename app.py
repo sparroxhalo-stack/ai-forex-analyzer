@@ -881,6 +881,73 @@ def analyse_pair(symbol,pair_name):
     near_sup  =price<=(support+sr_range*0.10)
     near_res  =price>=(resistance-sr_range*0.10)
 
+    # ── LIQUIDITY SWEEP DETECTION ─────────────────────────
+    # Most powerful signal — price sweeps a level then reverses
+    # Used in Day Trading and Swing modes only (not scalping)
+    liq_sig="WAIT"; liq_name=""; liq_strength=0
+    try:
+        ca=c.values; ha=h_.values; la=l_.values
+        oa=o_.values if "Open" in df_d.columns else c.shift(1).values
+
+        # Recent swing highs and lows (liquidity pools)
+        # These are where most traders put their stop losses
+        swing_highs=[ha[i] for i in range(2,min(30,len(ha)-2))
+                    if ha[i]>ha[i-1] and ha[i]>ha[i+1]
+                    and ha[i]>ha[i-2] and ha[i]>ha[i+2]]
+        swing_lows =[la[i] for i in range(2,min(30,len(la)-2))
+                    if la[i]<la[i-1] and la[i]<la[i+1]
+                    and la[i]<la[i-2] and la[i]<la[i+2]]
+
+        if swing_highs and swing_lows:
+            nearest_high=max(swing_highs)  # Most recent swing high
+            nearest_low =min(swing_lows)   # Most recent swing low
+
+            # Bullish sweep: price briefly dipped BELOW swing low then reversed UP
+            # Last candle: low below swing low, but closed ABOVE it = sweep + rejection
+            last_low =float(la[-1]); last_close=float(ca[-1]); last_open=float(oa[-1])
+            prev_low =float(la[-2]); prev_close=float(ca[-2])
+
+            bull_sweep=(
+                last_low < nearest_low and          # Swept below swing low
+                last_close > nearest_low and         # Closed back above it
+                last_close > last_open and           # Bullish close
+                (last_close-last_low)/(last_low-nearest_low+1e-9) > 1.5  # Strong rejection
+            )
+
+            # Bearish sweep: price briefly spiked ABOVE swing high then reversed DOWN
+            last_high=float(ha[-1])
+            bear_sweep=(
+                last_high > nearest_high and         # Swept above swing high
+                last_close < nearest_high and        # Closed back below it
+                last_close < last_open and           # Bearish close
+                (last_high-last_close)/(last_high-nearest_high+1e-9) > 1.5
+            )
+
+            if bull_sweep:
+                liq_sig="BUY"
+                liq_name=f"Bullish Liquidity Sweep @ {round(nearest_low,5)}"
+                liq_strength=3  # Strongest signal type
+            elif bear_sweep:
+                liq_sig="SELL"
+                liq_name=f"Bearish Liquidity Sweep @ {round(nearest_high,5)}"
+                liq_strength=3
+
+            # Also check previous candle sweep (sweep happened 1 candle ago)
+            if liq_sig=="WAIT" and len(ca)>3:
+                prev2_low=float(la[-3]); prev2_high=float(ha[-3])
+                # Bull sweep 1 candle ago — now confirming with bullish follow-through
+                if (prev_low<nearest_low and prev_close>nearest_low
+                        and float(ca[-1])>float(ca[-2])):
+                    liq_sig="BUY"
+                    liq_name=f"Confirmed Bull Sweep @ {round(nearest_low,5)}"
+                    liq_strength=2
+                elif (float(ha[-2])>nearest_high and prev_close<nearest_high
+                        and float(ca[-1])<float(ca[-2])):
+                    liq_sig="SELL"
+                    liq_name=f"Confirmed Bear Sweep @ {round(nearest_high,5)}"
+                    liq_strength=2
+    except: pass
+
     # Order Block detection
     ob_sig="WAIT"; ob_level=0; ob_name=""; ob_high=0; ob_low=0
     try:
@@ -966,20 +1033,32 @@ def analyse_pair(symbol,pair_name):
         "bos":     bos_sig,
         "ob":      ob_sig,
         "sr":      "BUY" if near_sup else "SELL" if near_res else "WAIT",
+        "liq":     liq_sig,  # Liquidity sweep vote
     }
 
     buy_votes  = sum(1 for v in filters_agree.values() if v=="BUY")
     sell_votes = sum(1 for v in filters_agree.values() if v=="SELL")
 
+    # ── LIQUIDITY SWEEP OVERRIDE ──────────────────────────
+    # If a liquidity sweep is detected AND trend agrees → strong signal
+    # regardless of other filters (sweep IS the signal)
+    liq_override = (liq_sig!="WAIT" and liq_sig==trend_dir and trend_strong)
+
+    if liq_override:
+        direction=liq_sig
+        # Confidence based on sweep strength + trend alignment
+        conf=min(95, 70 + liq_strength*8 + (5 if ob_sig==direction else 0)
+                    + (5 if candle_sig==direction else 0))
+        final_sig="STRONG BUY" if direction=="BUY" and conf>=85 else                   "STRONG SELL" if direction=="SELL" and conf>=85 else direction
+
     # Require trend + at least 3 other filters
-    if trend_dir=="BUY" and buy_votes>=4 and trend_strong:
+    elif trend_dir=="BUY" and buy_votes>=4 and trend_strong:
         direction="BUY"; conf=min(95, 55+buy_votes*7+candle_strength*5)
         final_sig="STRONG BUY" if conf>=85 else "BUY"
     elif trend_dir=="SELL" and sell_votes>=4 and trend_strong:
         direction="SELL"; conf=min(95, 55+sell_votes*7+candle_strength*5)
         final_sig="STRONG SELL" if conf>=85 else "SELL"
     elif trend_dir!="WAIT" and (buy_votes>=3 or sell_votes>=3) and trend_strong:
-        # Weaker signal — still show but lower grade
         direction=trend_dir
         votes=buy_votes if trend_dir=="BUY" else sell_votes
         conf=min(75, 45+votes*7+candle_strength*3)
@@ -1042,8 +1121,9 @@ def analyse_pair(symbol,pair_name):
     agree_count=max(buy_votes,sell_votes)
 
     if direction=="WAIT": grade="D"
-    elif adj_conf>=82 and candle_strength==2 and ob_sig!="WAIT" and mtf_ok: grade="A"  # Best: OB+rejection+MTF
-    elif adj_conf>=72 and candle_strength>=1 and at_key_level and trend_strong: grade="B"
+    elif liq_strength>=2 and adj_conf>=75 and trend_dir==direction: grade="A"  # Liquidity sweep = Grade A
+    elif adj_conf>=82 and candle_strength==2 and ob_sig!="WAIT" and mtf_ok: grade="A"  # OB+rejection+MTF
+    elif adj_conf>=72 and (liq_sig==direction or candle_strength>=1) and at_key_level and trend_strong: grade="B"
     elif adj_conf>=60 and trend_strong: grade="C"
     else: grade="D"
 
