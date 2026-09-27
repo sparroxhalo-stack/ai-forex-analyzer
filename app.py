@@ -3630,7 +3630,7 @@ elif "MT5 Bot" in page:
         <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px'>
           <div style='background:#161b22;border-radius:10px;padding:12px;text-align:center'>
             <div style='color:#8b949e;font-size:10px'>BALANCE</div>
-            <div style='font-size:20px;font-weight:800'>${st.session_state.grid_balance:,.2f}</div>
+            <div style='font-size:20px;font-weight:800'>${float(st.session_state.get("grid_balance",100)):,.2f}</div>
           </div>
           <div style='background:#161b22;border-radius:10px;padding:12px;text-align:center'>
             <div style='color:#8b949e;font-size:10px'>TOTAL PROFIT</div>
@@ -3662,13 +3662,15 @@ elif "MT5 Bot" in page:
         gtarget=col3.number_input("Daily target ($)",1.0,value=st.session_state.grid_daily_target,step=5.0)
         gloss  =col4.number_input("Daily loss limit ($)",1.0,value=st.session_state.grid_daily_loss,step=5.0)
 
-        profit_per=gl*gn*gtp*0.1
-        st.markdown(f"""
-        <div style='background:#0d1117;border-radius:10px;padding:12px;margin:8px 0'>
-          <b style='color:#ffd200'>💰 Profit per cycle: </b>
-          <span style='color:#3fb950;font-size:18px;font-weight:800'>+${profit_per:.2f}</span>
-          <span style='color:#8b949e;font-size:12px'> ({gn} trades × {gl} lot × {gtp} pips) | ~{round(gtarget/profit_per)} cycles to hit daily target</span>
-        </div>""", unsafe_allow_html=True)
+        profit_per=round(gl*gn*gtp*0.1,2)
+        cycles_needed=round(gtarget/profit_per) if profit_per>0 else 0
+        st.markdown(
+            f"<div style='background:#0d1117;border-radius:10px;padding:12px;margin:8px 0'>"
+            f"<b style='color:#ffd200'>💰 Profit per cycle: </b>"
+            f"<span style='color:#3fb950;font-size:18px;font-weight:800'>+${profit_per:.2f}</span>"
+            f"<span style='color:#8b949e;font-size:12px'> ({gn} trades × {gl} lot × {gtp} pips)"
+            f" | ~{cycles_needed} cycles to hit daily target</span></div>",
+            unsafe_allow_html=True)
 
         col_start,col_stop=st.columns(2)
         if col_start.button("▶️ START GRID BOT",type="primary",use_container_width=True,disabled=st.session_state.grid_active):
