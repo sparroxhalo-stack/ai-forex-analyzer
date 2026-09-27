@@ -3646,21 +3646,33 @@ elif "MT5 Bot" in page:
         # Config form
         col1,col2=st.columns(2)
         with col1:
-            ga=st.text_input("MT5 Account",value=st.session_state.grid_account,placeholder="12345678")
-            gs=st.selectbox("Server",["Exness-Real","Exness-Real2","JustMarkets-Real","JustMarkets-Demo","ICMarkets-Live01","XM.COM-Real","Other"])
-            gsy=st.selectbox("Symbol",["XAUUSDm","XAUUSDm.","XAUUSD","EURUSDm","GBPUSDm"])
-            gn=st.slider("Trades per grid",2,8,st.session_state.grid_num_trades)
+            ga =st.text_input("MT5 Account Number",value=st.session_state.grid_account,
+                placeholder="e.g. 12345678",key="gin_account")
+            gs =st.selectbox("MT5 Server",["Exness-Real","Exness-Real2","JustMarkets-Real",
+                "JustMarkets-Demo","ICMarkets-Live01","XM.COM-Real","Other"],key="gin_server")
+            gsy=st.selectbox("Symbol (pair to trade)",["XAUUSDm","XAUUSDm.","XAUUSD",
+                "EURUSDm","GBPUSDm","EURUSD","GBPUSD"],key="gin_symbol")
+            gn =st.slider("Number of trades per grid",2,8,
+                st.session_state.grid_num_trades,key="gin_num")
         with col2:
-            gp=st.text_input("MT5 Password",value=st.session_state.grid_password,type="password")
-            gbr=st.selectbox("Broker",["Exness","Just Markets","ICMarkets","XM","FBS","Other"])
-            gl=st.selectbox("Lot per trade",[0.01,0.02,0.03,0.05,0.10])
-            gb=st.number_input("Balance ($)",min_value=10.0,value=st.session_state.grid_balance,step=10.0)
+            gp =st.text_input("MT5 Password",value=st.session_state.grid_password,
+                type="password",placeholder="Your MT5 password",key="gin_pass")
+            gbr=st.selectbox("Broker",["Exness","Just Markets","ICMarkets","XM","FBS","Other"],
+                key="gin_broker")
+            gl =st.selectbox("Lot size per trade",[0.01,0.02,0.03,0.05,0.10],
+                key="gin_lot",help="0.01 = safest for $20-200 accounts")
+            gb =st.number_input("Account Balance ($)",min_value=10.0,
+                value=float(st.session_state.grid_balance),step=10.0,key="gin_balance")
 
         col3,col4=st.columns(2)
-        gtp=col3.number_input("TP (pips)",5,50,st.session_state.grid_tp)
-        gsl=col4.number_input("SL (pips)",10,100,st.session_state.grid_sl)
-        gtarget=col3.number_input("Daily target ($)",1.0,value=st.session_state.grid_daily_target,step=5.0)
-        gloss  =col4.number_input("Daily loss limit ($)",1.0,value=st.session_state.grid_daily_loss,step=5.0)
+        gtp   =col3.number_input("Take Profit (pips)",5,50,
+            st.session_state.grid_tp,key="gin_tp")
+        gsl   =col4.number_input("Stop Loss (pips)",10,100,
+            st.session_state.grid_sl,key="gin_sl")
+        gtarget=col3.number_input("Daily profit target ($)",1.0,
+            value=float(st.session_state.grid_daily_target),step=5.0,key="gin_target")
+        gloss  =col4.number_input("Daily loss limit ($)",1.0,
+            value=float(st.session_state.grid_daily_loss),step=5.0,key="gin_loss")
 
         profit_per=round(gl*gn*gtp*0.1,2)
         cycles_needed=round(gtarget/profit_per) if profit_per>0 else 0
