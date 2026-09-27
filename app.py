@@ -3608,11 +3608,104 @@ elif "MT5 Bot" in page:
 
     # Route to correct bot UI
     if st.session_state.bot_type=="Grid Bot":
-        # Redirect to Grid Bot tab
-        st.info("⚡ You selected the Grid Bot — go to the **⚡ Grid Bot** tab to configure and start it.")
-        if st.button("→ Go to Grid Bot", type="primary", use_container_width=True):
-            st.session_state.active_tab="⚡ Grid Bot"
+        st.divider()
+        # Show Grid Bot content directly here
+        st.subheader("⚡ Grid Bot Configuration")
+        st.info(f"Opens {st.session_state.get('grid_num_trades',5)} trades simultaneously on Gold. All close when TP hits.")
+
+        # Quick stats if already running
+        try:
+            r=requests.get(sb_url("grid_trades")+f"?user_email=eq.{email}&order=created_at.desc&limit=20",
+                headers=get_headers(),timeout=5)
+            gtrades=r.json() if r.status_code==200 else []
+        except: gtrades=[]
+
+        open_t  =[t for t in gtrades if t.get("status")=="open"]
+        closed_t=[t for t in gtrades if t.get("status")=="closed"]
+        tot_profit=sum(float(t.get("profit",0)) for t in closed_t)
+        float_pnl =sum(float(t.get("float_profit",0)) for t in open_t)
+
+        # Stats row
+        st.markdown(f"""
+        <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px'>
+          <div style='background:#161b22;border-radius:10px;padding:12px;text-align:center'>
+            <div style='color:#8b949e;font-size:10px'>BALANCE</div>
+            <div style='font-size:20px;font-weight:800'>${st.session_state.grid_balance:,.2f}</div>
+          </div>
+          <div style='background:#161b22;border-radius:10px;padding:12px;text-align:center'>
+            <div style='color:#8b949e;font-size:10px'>TOTAL PROFIT</div>
+            <div style='font-size:20px;font-weight:800;color:{"#3fb950" if tot_profit>=0 else "#f85149"}'>
+              {"+" if tot_profit>=0 else ""}${tot_profit:.2f}</div>
+          </div>
+          <div style='background:#161b22;border-radius:10px;padding:12px;text-align:center'>
+            <div style='color:#8b949e;font-size:10px'>OPEN TRADES</div>
+            <div style='font-size:20px;font-weight:800;color:#ffd200'>{len(open_t)}</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        # Config form
+        col1,col2=st.columns(2)
+        with col1:
+            ga=st.text_input("MT5 Account",value=st.session_state.grid_account,placeholder="12345678")
+            gs=st.selectbox("Server",["Exness-Real","Exness-Real2","JustMarkets-Real","JustMarkets-Demo","ICMarkets-Live01","XM.COM-Real","Other"])
+            gsy=st.selectbox("Symbol",["XAUUSDm","XAUUSDm.","XAUUSD","EURUSDm","GBPUSDm"])
+            gn=st.slider("Trades per grid",2,8,st.session_state.grid_num_trades)
+        with col2:
+            gp=st.text_input("MT5 Password",value=st.session_state.grid_password,type="password")
+            gbr=st.selectbox("Broker",["Exness","Just Markets","ICMarkets","XM","FBS","Other"])
+            gl=st.selectbox("Lot per trade",[0.01,0.02,0.03,0.05,0.10])
+            gb=st.number_input("Balance ($)",min_value=10.0,value=st.session_state.grid_balance,step=10.0)
+
+        col3,col4=st.columns(2)
+        gtp=col3.number_input("TP (pips)",5,50,st.session_state.grid_tp)
+        gsl=col4.number_input("SL (pips)",10,100,st.session_state.grid_sl)
+        gtarget=col3.number_input("Daily target ($)",1.0,value=st.session_state.grid_daily_target,step=5.0)
+        gloss  =col4.number_input("Daily loss limit ($)",1.0,value=st.session_state.grid_daily_loss,step=5.0)
+
+        profit_per=gl*gn*gtp*0.1
+        st.markdown(f"""
+        <div style='background:#0d1117;border-radius:10px;padding:12px;margin:8px 0'>
+          <b style='color:#ffd200'>💰 Profit per cycle: </b>
+          <span style='color:#3fb950;font-size:18px;font-weight:800'>+${profit_per:.2f}</span>
+          <span style='color:#8b949e;font-size:12px'> ({gn} trades × {gl} lot × {gtp} pips) | ~{round(gtarget/profit_per)} cycles to hit daily target</span>
+        </div>""", unsafe_allow_html=True)
+
+        col_start,col_stop=st.columns(2)
+        if col_start.button("▶️ START GRID BOT",type="primary",use_container_width=True,disabled=st.session_state.grid_active):
+            if not ga or not gp:
+                st.error("Enter MT5 account and password")
+            else:
+                requests.post(sb_url("grid_credentials"),headers=get_headers(),
+                    json={"user_email":email,"account":ga,"password":gp,
+                          "server":gs,"broker":gbr,"symbol":gsy,"lot_size":gl,
+                          "num_trades":gn,"tp_pips":gtp,"sl_pips":gsl,"balance":gb,
+                          "daily_target":gtarget,"daily_loss":gloss,"active":True,
+                          "updated_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                    timeout=8)
+                st.session_state.grid_active=True
+                st.session_state.grid_account=ga; st.session_state.grid_password=gp
+                st.session_state.grid_server=gs; st.session_state.grid_symbol=gsy
+                st.session_state.grid_lot=gl; st.session_state.grid_num_trades=gn
+                st.session_state.grid_tp=gtp; st.session_state.grid_sl=gsl
+                st.session_state.grid_balance=gb; st.session_state.grid_daily_target=gtarget
+                st.session_state.grid_daily_loss=gloss
+                st.success(f"✅ Grid Bot started! {gn}×{gl} lot on {gsy} | TP:{gtp} pips | Est. ${profit_per:.2f}/cycle")
+                st.rerun()
+
+        if col_stop.button("⏹️ STOP",use_container_width=True,disabled=not st.session_state.grid_active):
+            requests.patch(sb_url("grid_credentials")+f"?user_email=eq.{email}",
+                headers=get_headers(),
+                json={"active":False,"updated_at":datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                timeout=8)
+            st.session_state.grid_active=False
+            st.warning("⏹️ Grid bot stopped.")
             st.rerun()
+
+        st.markdown("""<div style='background:#1a0a0a;border:1px solid #f8514930;border-radius:8px;
+            padding:10px;margin-top:8px;font-size:12px'>
+            ⚠️ <b style='color:#f85149'>Risk:</b> <span style='color:#8b949e'>Grid bots can lose multiple trades simultaneously.
+            Test on demo first. Never trade with money you can't afford to lose.</span></div>""",
+            unsafe_allow_html=True)
         st.stop()
 
     # ── Session state ──────────────────────────────────────
