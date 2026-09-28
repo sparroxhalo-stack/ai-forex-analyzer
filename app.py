@@ -3646,22 +3646,22 @@ elif "MT5 Bot" in page:
         # Config form
         col1,col2=st.columns(2)
         with col1:
-            ga =st.text_input("MT5 Account Number",value=st.session_state.grid_account,
+            ga=st.text_input("MT5 Account Number",value=st.session_state.grid_account,
                 placeholder="e.g. 12345678",key="gin_account")
-            gs =st.selectbox("MT5 Server",["Exness-Real","Exness-Real2","JustMarkets-Real",
+            gs=st.selectbox("MT5 Server",["Exness-Real","Exness-Real2","JustMarkets-Real",
                 "JustMarkets-Demo","ICMarkets-Live01","XM.COM-Real","Other"],key="gin_server")
-            gsy=st.selectbox("Symbol (pair to trade)",["XAUUSDm","XAUUSDm.","XAUUSD",
+            gsy=st.selectbox("Symbol",["XAUUSDm","XAUUSDm.","XAUUSD",
                 "EURUSDm","GBPUSDm","EURUSD","GBPUSD"],key="gin_symbol")
-            gn =st.slider("Number of trades per grid",2,8,
+            gn=st.slider("Trades per grid",2,8,
                 st.session_state.grid_num_trades,key="gin_num")
         with col2:
-            gp =st.text_input("MT5 Password",value=st.session_state.grid_password,
+            gp=st.text_input("MT5 Password",value=st.session_state.grid_password,
                 type="password",placeholder="Your MT5 password",key="gin_pass")
             gbr=st.selectbox("Broker",["Exness","Just Markets","ICMarkets","XM","FBS","Other"],
                 key="gin_broker")
-            gl =st.selectbox("Lot size per trade",[0.01,0.02,0.03,0.05,0.10],
+            gl=st.selectbox("Lot per trade",[0.01,0.02,0.03,0.05,0.10],
                 key="gin_lot",help="0.01 = safest for $20-200 accounts")
-            gb =st.number_input("Account Balance ($)",min_value=10.0,
+            gb=st.number_input("Account Balance ($)",min_value=10.0,
                 value=float(st.session_state.grid_balance),step=10.0,key="gin_balance")
 
         col3,col4=st.columns(2)
